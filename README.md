@@ -5,6 +5,8 @@ A comprehensive AI-powered component generation studio for Adobe Experience Mana
 
 ## 🚀 Features
 
+Refer [Technical_documenttaion.md](https://github.com/Vinodh-Projects/DXP-COMPONENT-GENERATOR/edit/main/TECHNICAL_DOCUMENTATION.md) for  detail tehcnical documentaion.
+
 ### Core Capabilities
 - **AI-Powered Component Generation**: Leverage advanced AI models to generate AEM components from natural language descriptions
 - **Real-Time Preview**: Interactive component preview with placeholder image functionality
@@ -62,7 +64,7 @@ A comprehensive AI-powered component generation studio for Adobe Experience Mana
 
 ### Manual Setup
 
-Refer to `setup_instructions.md` for detailed manual installation steps.
+Refer to [setup_instructions.md](https://github.com/Vinodh-Projects/DXP-COMPONENT-GENERATOR/edit/main/setup_instructions.md.md) for detailed manual installation steps.
 
 ## 🏗️ Architecture
 
@@ -210,142 +212,18 @@ For support and questions:
 - Check existing documentation
 - Review the setup guides
 
----
-
---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-
-# 🔧 **Local Setup Instructions**
-
-##  **1. AEM MCPserver Setup**
-
-### Description
-The AEM MCP Server is a Node.js application that provides REST API endpoints for building and deploying Adobe Experience Manager (AEM) projects using Maven. It acts as a bridge between the frontend and the AEM environment, automating build and deployment tasks.
-
-### Key Features
--   **Build Automation:** Triggers Maven builds for AEM projects via REST API.
--   **Package Deployment:** Deploys AEM packages to author instances.
--   **Authentication:** Implements basic authentication for API security.
--   **Package Management:** Enables listing and managing installed packages.
--   **Docker Support:** Offers containerized deployment option using Docker.
-
-### Technologies
-
--   Node.js
--   Express
--   Maven
--   Docker
-
-### Configuration
-
-Configuration is managed via environment variables.  See `.env.example` for the required variables.
-
-### Getting Started
-
-1.  **Install Dependencies:**
-
-    ```bash
-    cd aem-mcp-server
-    npm install
-    ```
-
-2.  **Configure Environment:**
-
-    Create a `.env` file based on `.env.example` and update the values.
-
-3.  **Start the Server:**
-
-    ```bash
-    npm run dev # Development mode
-    npm run build && npm start # Production mode
-    ```
-
-### Docker Deployment
-
-```bash
-cd aem-mcp-server
-docker-compose up -d
-```
-
-### **2. Backend Setup**
-
-## Description
-The backend is a Python-based FastAPI application that serves as the core logic for generating AEM components. It leverages OpenAI's GPT models to generate code snippets for HTL, Sling Models, and dialog XML based on user prompts.
-
-## Key Features
-
-AEM Component Generation: Generates AEM component code using AI.
-REST API: Provides endpoints for component generation.
-Templating: Uses Jinja2 templates for code generation.
-OpenAI Integration: Integrates with OpenAI's GPT models for code synthesis.
-   Technologies
-   Python
-   FastAPI
-   OpenAI API
-   Jinja2
-
-## Configuration
-Configuration is managed via environment variables. See .env for the required variables, especially the OPENAI_API_KEY.
-
-Configure .env
-Create backend/.env with:
-OPENAI_API_KEY=your_openai_api_key_here
-PORT=5000
-
-### 1. Getting Started
-
-cd backend
-pip install -r requirements.txt
-
-### 2. Configure Environment:
-
-Create a .env file and set the OPENAI_API_KEY.
-
-### 3. Run the Application:
-
-python run.py
-
-### API Endpoints
-
-/api/component/generate: Generates AEM component code based on a prompt.
-
-## **3. Frontend Setup**
-
-### Description
-The frontend is a React application that provides a user interface for interacting with the backend API and generating AEM components. It allows users to input prompts, configure component parameters, and view the generated code.
-
-### Key Features
-User Interface: Provides a user-friendly interface for AEM component generation.
-Component Preview: Displays the generated code in a structured format.
-Project Generation: Supports generating entire AEM projects.
-
-### Technologies
-   React
-   React Router
-   Axios
-
-## Getting Started
-
-### **1. Install Dependencies:**
-
-cd frontend
-npm install
-### **2. Start the Application:**
-
-npm start
-The application will be accessible at http://localhost:3000.
-
 ### Other Features
 
 ## 🔒 Security
-✔️ Never commit .env to version control
-✔️ Rotate OpenAI API keys periodically
-✔️ For production, implement authentication middleware for backend endpoints
+- ✔️ Never commit .env to version control
+- ✔️ Rotate OpenAI API keys periodically
+- ✔️ For production, implement authentication middleware for backend endpoints
 
 
 ## 👨‍💻 Contributors
 
-✔️ Vinodh Sampath
-✔️ Narashiman N J
-✔️ Nandlal Pandit
-✔️ Guru
-✔️ Varun
+- ✔️ Vinodh Sampath
+- ✔️ Narashiman N J
+- ✔️ Nandlal Pandit
+- ✔️ Guru
+- ✔️ Varun
