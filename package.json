@@ -1,0 +1,31 @@
+{
+  "name": "dxp-component-generator",
+  "version": "1.0.0",
+  "main": "index.js",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev:frontend": "cd UI && npm run dev",
+    "dev:backend:node": "cd backend && npm start",
+    "dev:backend:python": "cd backend && py run.py",
+    "install:all": "npm install && cd backend && npm install && cd ../UI && npm install",
+    "dev:both": "concurrently \"npm run dev:frontend\" \"npm run dev:backend:python\"",
+    "build": "cd UI && npm run build"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "fs-extra": "^11.3.0",
+    "handlebars": "^4.7.8",
+    "inquirer": "^12.7.0",
+    "openai": "^5.8.2",
+    "yargs": "^17.7.2"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.0"
+  }
+}

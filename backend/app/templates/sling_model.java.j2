@@ -1,0 +1,23 @@
+package {{ packageName }};
+
+import org.apache.sling.models.annotations.Model;
+import javax.inject.Inject;
+import org.apache.sling.api.resource.Resource;
+import org.apache.sling.models.annotations.injectorspecific.ValueMapValue;
+import org.apache.sling.models.annotations.DefaultInjectionStrategy;
+import java.util.List;
+import java.util.ArrayList;
+
+@Model(adaptables = Resource.class)
+public class {{ className }} {
+
+{% for property in properties %}
+@Inject
+private String {{ property }};
+
+public String get{{ property | capitalize }}() {
+    return {{ property }};
+}
+{% endfor %}
+
+}

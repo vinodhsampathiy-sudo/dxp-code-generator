@@ -1,0 +1,75 @@
+You are tasked with generating a valid JSON structure for an AEM Edge Delivery Services (EDS) block. Additionally, a **sample reference block** and **sample assistant output** are provided for guidance. Your output must closely follow the format and structure of the sample.  
+
+---
+JavaScript (`{{block_name}}.js`) Requirements
+
+- Must reflect behavior defined in `functionalityDescription`
+- Export a default `async function decorate(block)`
+- Use `block.children` to access rows, and within each row:
+  const columns = [...row.children];
+- Use utility functions from `aem.js` if needed:
+  import { createOptimizedPicture } from '../../scripts/aem.js';
+- If a <picture> element is present, extract the src from the nested <img> tag (i.e., picture.querySelector('img').src).
+  - If only an <img> element is present, use img.src.
+  - Do not extract from picture.src — it is not valid.
+
+ - Recommended Function Structure:
+      ````
+      import { /* required helpers */ } from '../../scripts/aem.js';
+      export default async function decorate(block) {
+        const wrapper = document.createElement('div');
+        [...block.children].forEach((row) => {
+          // Logic to extract and rebuild block content
+        });
+
+        block.textContent = '';
+        block.append(wrapper);
+      }
+      ``` 
+
+Behavior Tips:
+- If description mentions carousel, tabs, quotes, etc., implement logic accordingly (e.g., scrollable layout, hidden/showing tabs, etc.)
+
+CSS Styling (`{{block_name}}.css`) Requirements
+- Add fixed height and width for proper display.  
+   - Avoid adding styles in the JavaScript file.
+- Add fixed height and width for proper display.  
+   - Avoid adding styles in the JavaScript file.   
+- Styles must visually represent the purpose described in `functionalityDescription`
+- Ensure all style variants maintain accessibility and responsiveness
+
+Multiple Style Variants:
+- Support alternative visual styles via `blockStyle` (e.g., `compact`, `minimal`, `expanded`)
+- Each variant must reflect a different visual presentation while preserving core functionality
+
+Ensure CSS remains modular and scalable for future variants.
+
+Responsive Behavior:
+- Columns stack vertically on mobile (@media (max-width: 600px))
+
+Edge Delivery Compliance:  
+  - Ensure the block adheres to Edge Delivery Services' standards for functionality and styling.
+
+**Authoring Guide (`markdownTable`):**
+- Provide a clear Markdown table explaining how a content author should structure the block in a Google Doc or Word document.
+- This table is the source of truth for the block's content.
+
+Hard Constraints
+- CSS and JS must directly align with `functionalityDescription`
+- Infer structure, logic, and visuals from the description – do not assume semantic tags
+- Final output must be a complete and valid JSON object
+- If functionality is unclear or ambiguous, return: "I can't help with that"
+
+**sample assistant output**
+{
+  "javascriptFile": {
+    "fileName": "tabs.js",
+    "content": "export default async function decorate(block) {\n  const tabList = document.createElement('div');\n  tabList.className = 'tabs-list';\n  tabList.setAttribute('role', 'tablist');\n\n  const tabs = [...block.children].map((child, i) => {\n    const tabPanel = child;\n    const tabButton = document.createElement('button');\n    const id = `tab-${i}`;\n\n    tabPanel.className = 'tabs-panel';\n    tabPanel.id = `tabpanel-${id}`;\n    tabPanel.setAttribute('role', 'tabpanel');\n    tabPanel.setAttribute('aria-hidden', 'true');\n\n    tabButton.className = 'tabs-tab';\n    tabButton.setAttribute('role', 'tab');\n    tabButton.setAttribute('aria-controls', `tabpanel-${id}`);\n    tabButton.setAttribute('aria-selected', 'false');\n    tabButton.setAttribute('type', 'button');\n    tabButton.innerHTML = tabPanel.firstElementChild?.innerHTML || `Tab ${i + 1}`;\n\n    tabButton.addEventListener('click', () => {\n      [...block.querySelectorAll('[role=tabpanel]')].forEach(panel => panel.setAttribute('aria-hidden', 'true'));\n      [...tabList.querySelectorAll('[role=tab]')].forEach(tab => tab.setAttribute('aria-selected', 'false'));\n\n      tabPanel.setAttribute('aria-hidden', 'false');\n      tabButton.setAttribute('aria-selected', 'true');\n    });\n\n    tabList.append(tabButton);\n    return tabPanel;\n  });\n\n  block.innerHTML = '';\n  block.append(tabList);\n  tabs.forEach(tabPanel => block.append(tabPanel));\n\n  // Activate first tab by default\n  if (tabs.length > 0) {\n    tabList.querySelector('[role=tab]')?.click();\n  }\n}"
+  },
+  "cssFile": {
+    "fileName": "tabs.css",
+    "content": ".tabs {\n  width: 100%;\n  font-family: sans-serif;\n}\n\n.tabs .tabs-list {\n  display: flex;\n  flex-wrap: wrap;\n  gap: 8px;\n  margin-bottom: 16px;\n}\n\n.tabs .tabs-tab {\n  background-color: #eee;\n  border: none;\n  padding: 8px 16px;\n  cursor: pointer;\n  border-radius: 4px;\n  font-weight: 500;\n}\n\n.tabs .tabs-tab[aria-selected=\"true\"] {\n  background-color: #fff;\n  box-shadow: 0 0 0 2px #333;\n}\n\n.tabs .tabs-panel {\n  display: block;\n  padding: 16px 0;\n}\n\n.tabs .tabs-panel[aria-hidden=\"true\"] {\n  display: none;\n}\n\n@media (max-width: 600px) {\n  .tabs .tabs-list {\n    flex-direction: column;\n  }\n}"
+  },
+  "markdownTable": "| Tabs    |               |\n|---------|---------------|\n| Tab 1   | tab one text  |\n| Tab 2   | tab two text  |"
+}
+---

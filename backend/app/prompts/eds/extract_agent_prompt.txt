@@ -1,0 +1,25 @@
+Extract the following details from the user's request for an AEM Edge Delivery Services block:
+
+Return a JSON object with:
+{
+  "blockName": "string",               // Extracted name of the block and make sure the block name is in lowercase and single word. (e.g., "hero", "accordion").
+  "blockStyle": "string",              // Style or variant mentioned (e.g., "dark", "full-width"). Use "default" if not specified.
+  "blockType": "string",               // Type of block (e.g., "carousel", "accordion"). Use "custom" if not specified.
+  "functionalityDescription": "string" // Concise summary of the block’s functionality.
+}
+
+Example Input:
+"A carousel block"
+
+**Example Output (valid JSON):** A JSON object containing:
+{
+  "blockName": "carousel",
+  "blockStyle": "default",
+  "functionalityDescription": "It supports autoplay with configurable intervals, navigation arrows for manual slide control, and pagination dots. Users can swipe on touch devices, and the block is fully responsive across devices. It supports accessibility features including keyboard navigation and screen reader compatibility. Authors can customize the number of slides, order, transition speed, and visual styles."
+}
+
+Guidelines:
+- Prefer exact matches from the request.
+- Use natural language understanding to infer descriptions where not explicitly stated.
+- If the block name is not given, use "unknown". If style is missing, use "default".
+- Ensure the response is valid JSON only — no comments, no explanation.

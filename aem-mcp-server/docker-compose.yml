@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  aem-mcp-server:
+    build: .
+    container_name: aem-mcp-server
+    ports:
+      - "8080:8080"
+    environment:
+      - NODE_ENV=production
+      - AEM_HOST=${AEM_HOST}
+      - AEM_SERVICE_USER=${AEM_SERVICE_USER}
+      - AEM_SERVICE_PASSWORD=${AEM_SERVICE_PASSWORD}
+      - MCP_USERNAME=${MCP_USERNAME}
+      - MCP_PASSWORD=${MCP_PASSWORD}
+      - AEM_PROJECT_PATH=${AEM_PROJECT_PATH}
+    volumes:
+      - ./logs:/app/logs
+      - ${AEM_PROJECT_PATH}:${AEM_PROJECT_PATH}:ro
+      - ~/.m2:/root/.m2  # Maven cache
+    networks:
+      - aem-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  aem-network:
+    driver: bridge

@@ -1,0 +1,51 @@
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: backend-mongodb
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password123
+      MONGO_INITDB_DATABASE: dxp_gen_studio
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    networks:
+      - backend-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-app
+    restart: unless-stopped
+    environment:
+      - MONGODB_URI=mongodb://admin:password123@mongodb:27017/dxp_gen_studio?authSource=admin
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8000:5000"
+    volumes:
+      - .:/app
+      - ../output:/app/output
+      - ../project_code:/project_code
+    networks:
+      - backend-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    command: ["python", "run.py"]
+
+networks:
+  backend-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:

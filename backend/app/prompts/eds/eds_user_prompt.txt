@@ -1,0 +1,86 @@
+Generate reusable and production-ready JavaScript and CSS files for an Adobe Edge Delivery Service (EDS) block.
+
+**Block Name**: {{ block_name }}
+
+**Description / Purpose**: {{ description }}
+
+### Requirements:
+
+#### 1. **JavaScript File** (`{{ block_name }}.js`):
+   - Export a default `async function decorate(block)`.
+   - Read the block and its children to dynamically determine layout structure.
+   - Call clearly defined helper methods/functions to organize logic (e.g., initLayout, buildImage, applyAccessibility, bindEvents).
+   - Dynamically apply layout classes based on the presence or position of elements (e.g., headline, paragraph, image, CTA).
+   - Wrap content into appropriate layout containers (e.g., headline, paragraph, image, CTA).
+   - For images:
+     - Use createOptimizedPicture(src, alt, eager = false, breakpoints = true) from aem.js.
+     - Ensure proper fallback <img> and multiple <source> elements for responsive loading.
+   - Prioritize accessibility (e.g., `role`, `aria-label`) and responsiveness.
+   - Include comments to explain key sections of the code.
+   - Example structure:
+     ```javascript
+     export default async function decorate(block) {
+         const wrapper = document.createElement('div');
+         [...block.children].forEach((row) => {
+             // Logic to extract and style elements
+         });
+         block.textContent = '';
+         block.append(wrapper);
+     }
+     ```
+
+#### 2. **CSS File** (`{{ block_name }}.css`):
+   - Use the same class names as defined in the JavaScript file.
+   - Follow **BEM-style naming** for maintainability and scoping.
+   - Define styles for:
+     - Layout, spacing, colors, typography, and element styling.
+     - Responsive behavior (mobile, tablet, desktop).
+     - Hover, focus, and active states where appropriate.
+   - Use system fonts and a light default theme unless otherwise specified.
+   - Ensure accessibility and responsiveness are prioritized.
+   - Include comments to explain key sections of the CSS.
+
+### Instructions:
+1. Output the **JavaScript file** first as a single code block labeled `{{ block_name }}.js`.
+2. Output the **CSS file** next as a single code block labeled `{{ block_name }}.css`.
+3. Do not include HTML or explanations in the output.
+
+### Additional Requirements:
+1. Provide a simple, editable two-column tabular content example suitable for copy-pasting into Google Docs.
+  - Format: Column 1 = Label (e.g., Headline, Image, CTA), Column 2 = Sample Content.
+  - Use realistic example values based on the block purpose.
+  - Ensure the table reflects the content structure expected by the JS block.
+
+### Common Functionalities:
+When applicable, include the following functionalities in the generated code:
+
+- **Carousel**: Autoplay, pause on hover, navigation, responsive.
+- **Accordion**: Expand/collapse, smooth animation, keyboard accessibility.
+- **Tabs**: Switch content, keyboard navigation, responsive.
+- **Modal/Popup**: Open/close, overlay, animations, accessibility.
+- **Tooltip**: Show/hide, positioning, delay, screen reader support.
+- **Form Validation**: Real-time validation, custom errors, accessibility.
+- **Image Gallery**: Lightbox, thumbnails, zoom, responsive.
+- **Dropdown Menu**: Multi-level, hover/click, keyboard navigation.
+- **Sticky Header/Footer**: Fixed position, show/hide on scroll, responsive.
+- **Lazy Loading**: Load on view, placeholders, performance optimization.
+- **Infinite Scroll**: Load more on scroll, indicators, performance.
+- **Notification/Alert**: Auto-dismiss, types (success, error, etc.), accessibility.
+- **Progress Bar/Loader**: Indeterminate/determinate, animations, accessibility.
+- **Search Functionality**: Real-time results, term highlighting, accessibility.
+- **Responsive Navigation**: Mobile-friendly, hamburger menu, transitions, keyboard support.
+
+### Notes:
+- Ensure the generated code is production-ready and adheres to industry standards.
+- Maintain consistency between the JavaScript and CSS files for seamless integration.
+- Follow Adobe Edge Delivery Service (EDS) standards and conventions.
+- Prioritize accessibility, responsiveness, and maintainability.
+
+### Guidelines:
+1. Use **BEM naming convention** for CSS classes.
+2. Export a default asynchronous function `decorate` in JavaScript to process the block DOM.
+3. Ensure CSS matches the structure and class names in JavaScript.
+4. Follow modern JavaScript and CSS best practices.
+5. Leverage GPT-4's ability to generate concise, modular, and reusable code.
+6. Include comments in the generated code to explain key sections where necessary.
+7. Ensure the generated code is optimized for performance and scalability.
