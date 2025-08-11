@@ -332,7 +332,6 @@ npm install
 ### **2. Start the Application:**
 
 npm start
-
 The application will be accessible at http://localhost:3000.
 
 ### Other Features
@@ -342,16 +341,11 @@ The application will be accessible at http://localhost:3000.
 ✔️ Rotate OpenAI API keys periodically
 ✔️ For production, implement authentication middleware for backend endpoints
 
-## 🔮 Future Enhancements
-✅ Download generated files as zip
-✅ Syntax highlighting in output panel
-✅ Docker Compose for single-command local setup
-✅ CI/CD pipeline integration with AEM Cloud Manager
 
 ## 👨‍💻 Contributors
 
-Vinodh Sampath
-Narashiman N J
-Nandlal Pandit
-Guru
-Varun
+✔️ Vinodh Sampath
+✔️ Narashiman N J
+✔️ Nandlal Pandit
+✔️ Guru
+✔️ Varun
