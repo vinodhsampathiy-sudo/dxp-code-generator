@@ -2,7 +2,12 @@ from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import HumanMessage
 
-llm = ChatOpenAI(model="gpt-4o", temperature=0.4)
+# Use GPT-4o for LangChain agents as GPT-5 has parameter restrictions
+llm = ChatOpenAI(model="gpt-4o", temperature=0.4)langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.schema import HumanMessage
+
+llm = ChatOpenAI(model="gpt-5", temperature=0.4)
 
 template = ChatPromptTemplate.from_messages([
     ("system", "You are an expert frontend engineer. Based on the input below, generate a clean, reusable UI component using best practices."),

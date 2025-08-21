@@ -82,6 +82,8 @@ const DXPComponentGeneratorInterface = () => {
   );
   const [isLoading, setIsLoading] = useState(false);
   const [loadingContext, setLoadingContext] = useState(null);
+  const [loadingStartTime, setLoadingStartTime] = useState(null);
+  const [loadingDuration, setLoadingDuration] = useState(0);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [htmlNode, setHtmlNode] = useState("");
   const [cssNode, setCssNode] = useState("");
@@ -271,16 +273,27 @@ const DXPComponentGeneratorInterface = () => {
         const session = response.data.session;
 
         // Convert messages to the format expected by the UI FIRST
-        const formattedMessages = session.messages.map(msg => ({
-          id: msg.id,
-          text: msg.content,
-          image: msg.image_data ? `data:image/png;base64,${msg.image_data}` : null,
-          sender: msg.message_type === "user" ? "user" : "ai",
-          timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          }),
-        }));
+        const formattedMessages = session.messages.map(msg => {
+          let image = null;
+          // Prefer image_url from metadata if present
+          if (msg.metadata && msg.metadata.image_url) {
+            image = msg.metadata.image_url.startsWith("/static/")
+              ? `${apiConfig.baseUrl}${msg.metadata.image_url}`
+              : msg.metadata.image_url;
+          } else if (msg.image_data) {
+            image = `data:image/png;base64,${msg.image_data}`;
+          }
+          return {
+            id: msg.id,
+            text: msg.content,
+            image,
+            sender: msg.message_type === "user" ? "user" : "ai",
+            timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          };
+        });
 
         // Convert components to the format expected by the UI
         const formattedComponents = session.generated_components.map(comp => ({
@@ -418,9 +431,9 @@ const DXPComponentGeneratorInterface = () => {
     setSuccessContext(null);
     
     const reqObj = {
-      projectPath: "../project_code",
+      projectPath: "/Users/vinodhsampath/Code/AI Hackathon/DXP-COMPONENT-GENERATOR/project_code",
       mavenProfile: "autoInstallPackage",
-      packagePath: "../project_code/all/target/aem-guides-wknd.all-2.1.5-SNAPSHOT.zip",
+      packagePath: "/Users/vinodhsampath/Code/AI Hackathon/DXP-COMPONENT-GENERATOR/project_code/all/target/aem-guides-wknd.all-2.1.5-SNAPSHOT.zip",
       autoInstall: true,
     };
     setIsLoading(true);
@@ -972,9 +985,11 @@ const DXPComponentGeneratorInterface = () => {
     
     console.log("🔨 Building and deploying AEM component:", selectedComponent.name);
     
-    // Set loading state for build & deploy
+    // Set loading state for build & deploy with timing
+    const startTime = Date.now();
     setIsLoading(true);
     setLoadingContext("build");
+    setLoadingStartTime(startTime);
     
     try {
       // Use the buildAemProject endpoint from apiConfig
@@ -1015,9 +1030,18 @@ const DXPComponentGeneratorInterface = () => {
         timeout: 60000 // 60 second timeout for build process
       });
       
-      if (response.data.success) {
-        setSuccessMessage(response.data.message || "AEM component built and deployed successfully!");
+      console.log("🔍 Build response:", response.data);
+      
+      // Check for success - look for both success flag and absence of errors
+      if (response.data.success === true || (response.status === 200 && !response.data.error)) {
+        const endTime = Date.now();
+        const duration = Math.round((endTime - startTime) / 1000);
+        setLoadingDuration(duration);
+        
+        setSuccessMessage(`AEM component built and deployed successfully! (${duration}s)`);
         setSuccessContext("aem_build_deploy");
+        
+        console.log(`🚀 Build completed in ${duration} seconds`);
         
         // If there's a deployment URL or log, you could show it
         if (response.data.deployment_url) {
@@ -1034,13 +1058,17 @@ const DXPComponentGeneratorInterface = () => {
           setSuccessContext(null);
         }, 5000);
       } else {
-        setErrorMessage(response.data.error || "AEM build and deployment failed");
+        // Handle build failure
+        let errorMsg = response.data.error || response.data.message || "AEM build and deployment failed";
+        console.error("❌ Build failed:", errorMsg);
+        
+        setErrorMessage(errorMsg);
         setErrorContext("aem_build_deploy");
         
         setTimeout(() => {
           setErrorMessage(null);
           setErrorContext(null);
-        }, 5000);
+        }, 8000);
       }
     } catch (error) {
       console.error("❌ Error building/deploying AEM component:", error);
@@ -1072,6 +1100,7 @@ const DXPComponentGeneratorInterface = () => {
     } finally {
       setIsLoading(false);
       setLoadingContext(null);
+      setLoadingStartTime(null);
     }
   };
 
@@ -2268,6 +2297,8 @@ const DXPComponentGeneratorInterface = () => {
                 setRightPanelOpen={setRightPanelOpen}
                 setSelectedComponent={setSelectedComponent}
                 setSelectedComponentForRefinement={setSelectedComponentForRefinement}
+                loadingStartTime={loadingStartTime}
+                loadingDuration={loadingDuration}
               />
             )}
 

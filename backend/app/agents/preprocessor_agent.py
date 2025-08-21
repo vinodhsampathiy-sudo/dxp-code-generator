@@ -1,6 +1,7 @@
 from langchain.chat_models import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 
+# Use GPT-4o for LangChain agents as GPT-5 has parameter restrictions
 llm = ChatOpenAI(model="gpt-4o", temperature=0.3)
 
 def preprocess_prompt(user_prompt: str, sys_prompt: str) -> dict:

@@ -93,7 +93,7 @@ class HelperUtils:
     @staticmethod
     def call_openai(
             messages:List[Message],
-            model: str = MODEL_SELECTOR.get("GPT_4o"),
+            model: str = MODEL_SELECTOR.get("GPT_4o"),  # Default to cost-effective GPT-4o
             temperature: float = 0.7,
             max_tokens: int = 1000
     ) -> ChatCompletion:
@@ -106,12 +106,20 @@ class HelperUtils:
         client = OpenAI(api_key=api_key)
 
         try:
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
-            )
+            # GPT-5 doesn't support temperature parameter, only pass it for other models
+            if model == "gpt-5":
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    max_tokens=max_tokens
+                )
+            else:
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens
+                )
             return response
         except Exception as e:
             raise RuntimeError(f"OpenAI API call failed: {e}")

@@ -29,7 +29,7 @@ services:
       dockerfile: Dockerfile
     container_name: dxp-gen-studio-backend
     ports:
-      - "5000:5000"
+      - "5001:5000"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
@@ -49,6 +49,8 @@ services:
       - ./backend/logs:/app/logs
       - ./output:/app/output
       - ./project_code:/project_code
+      # Mount the entire app directory for development
+      - ./backend/app:/app/app
     networks:
       - dxp-network
     restart: unless-stopped

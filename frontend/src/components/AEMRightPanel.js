@@ -1,5 +1,6 @@
 import React from 'react';
 import { Copy, Download, Eye, Wrench, X } from 'lucide-react';
+import ProgressLoader from './ProgressLoader';
 
 const AEMRightPanel = ({
   selectedComponent,
@@ -18,7 +19,9 @@ const AEMRightPanel = ({
   successContext,
   setSelectedComponent,
   selectedComponentForRefinement,
-  setSelectedComponentForRefinement
+  setSelectedComponentForRefinement,
+  loadingStartTime,
+  loadingDuration
 }) => {
   console.log("🔵 AEMRightPanel RENDERED");
   console.log("🔵 AEM selectedComponent:", selectedComponent ? selectedComponent.name : "null");
@@ -303,24 +306,12 @@ const AEMRightPanel = ({
         </div>
       )}
 
-      {/* Loading/Error/Success Messages */}
-      {isLoading && loadingContext === "analyze" && (
-        <div style={{ ...styles.messageContainer, ...styles.loadingContainer }}>
-          <div>Generating AEM component...</div>
-        </div>
-      )}
-
-      {isLoading && loadingContext === "build" && (
-        <div style={{ ...styles.messageContainer, ...styles.loadingContainer }}>
-          <div>Building and deploying component...</div>
-        </div>
-      )}
-
-      {isLoading && loadingContext === "refine" && (
-        <div style={{ ...styles.messageContainer, ...styles.loadingContainer }}>
-          <div>Refining AEM component...</div>
-        </div>
-      )}
+      {/* Enhanced Progress Loader */}
+      <ProgressLoader 
+        isLoading={isLoading}
+        loadingContext={loadingContext}
+        estimatedTime={loadingContext === 'build' ? 45 : loadingContext === 'analyze' ? 35 : 25}
+      />
 
       {errorMessage && (
         <div style={{ ...styles.messageContainer, ...styles.errorContainer }}>

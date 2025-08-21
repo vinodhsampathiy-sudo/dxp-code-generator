@@ -74,7 +74,7 @@ const ConfigPanel = () => {
       <div style={{ marginBottom: '10px' }}>
         <input
           type="text"
-          placeholder="Enter new base URL (e.g., http://localhost:5000)"
+          placeholder="Enter new base URL (e.g., http://localhost:5001)"
           value={newBaseUrl}
           onChange={(e) => setNewBaseUrl(e.target.value)}
           style={{ width: '100%', padding: '5px', marginBottom: '5px' }}

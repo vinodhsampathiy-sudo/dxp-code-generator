@@ -4,10 +4,11 @@ import json
 import re
 import shutil
 import subprocess
+import time
 from io import BytesIO
 from urllib.request import Request
 from datetime import datetime
-from typing import Dict, Any, Coroutine, Optional, List, cast
+from typing import Dict, Any, Coroutine, Optional, List, cast, Tuple
 
 from openai import OpenAI
 import google.generativeai as genai
@@ -20,10 +21,11 @@ import logging
 import sys
 
 import anthropic
+from concurrent.futures import ThreadPoolExecutor
 
 from ..chatStorage.chat_model import ChatStorage, ChatSession, ChatMessage, GeneratedComponent
-
-# Import our new storage models
+from .complexity_analyzer import ComplexityAnalyzer
+from .model_selector import ModelSelector, ModelType
 
 # Configure logging
 logging.basicConfig(
@@ -38,56 +40,119 @@ logging.basicConfig(
 logger = logging.getLogger('app.services.component_service')
 logger.setLevel(logging.INFO)
 
+# Global progress tracking
+PROGRESS_STORE = {}
+
+class ProgressTracker:
+    def __init__(self, session_id: str, total_steps: int = 7):
+        self.session_id = session_id
+        self.total_steps = total_steps
+        self.current_step = 0
+        self.step_messages = []
+        self.start_time = datetime.now()
+        PROGRESS_STORE[session_id] = self
+    
+    def update_step(self, step: int, message: str):
+        self.current_step = step
+        self.step_messages.append({
+            'step': step,
+            'message': message,
+            'timestamp': datetime.now().isoformat(),
+            'progress': (step / self.total_steps) * 100
+        })
+        PROGRESS_STORE[self.session_id] = self
+        logger.info(f"Progress Update [{step}/{self.total_steps}]: {message}")
+    
+    def get_progress(self):
+        return {
+            'session_id': self.session_id,
+            'current_step': self.current_step,
+            'total_steps': self.total_steps,
+            'progress': (self.current_step / self.total_steps) * 100,
+            'messages': self.step_messages,
+            'elapsed_time': (datetime.now() - self.start_time).total_seconds()
+        }
+
 class ComponentService:
     def __init__(self):
-        # Load environment variables first
+        logger.info("In ComponentService")
         load_dotenv()
-
-        logger.info(f"In ComponentService")
-
-        # Initialize chat storage
         self.chat_storage = ChatStorage()
+        self.complexity_analyzer = ComplexityAnalyzer()
+        self.model_selector = ModelSelector()
+        
+        # Initialize AI clients
+        self.openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+        self.anthropic_client = anthropic.Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
+        self.gemini_client = genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+        
+        # Set default provider
+        self.default_provider = "openai"  # Default to OpenAI
+        
+        # Initialize executor for parallel processing
+        self.executor = ThreadPoolExecutor(max_workers=4)
+        
+        # Component generation settings
+        self.enable_caching = os.getenv('ENABLE_CACHING', 'true').lower() == 'true'
+        self.parallel_processing = os.getenv('PARALLEL_PROCESSING', 'true').lower() == 'true'
+        self.auto_optimize = os.getenv('AUTO_OPTIMIZE', 'true').lower() == 'true'
+        
+        # Cache for common patterns and snippets
+        self.pattern_cache = {}
+        self.progress_trackers = {}
 
-        # Default provider; can be overridden per request/session
-        self.default_provider = os.getenv("MODEL_PROVIDER", "openai").lower()
+    def get_progress(self, session_id: str) -> Dict[str, Any]:
+        """Get progress for a specific session"""
+        if session_id in PROGRESS_STORE:
+            return PROGRESS_STORE[session_id].get_progress()
+        return {
+            'session_id': session_id,
+            'current_step': 0,
+            'total_steps': 7,
+            'progress': 0,
+            'messages': [],
+            'elapsed_time': 0
+        }
 
-        # API keys
-        self.openai_api_key = os.getenv("OPENAI_API_KEY")
-        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
-        self.anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-        self.groq_api_key = os.getenv("GROQ_API_KEY")
+    def cleanup_progress(self, session_id: str):
+        """Clean up progress tracking for completed sessions"""
+        if session_id in PROGRESS_STORE:
+            del PROGRESS_STORE[session_id]
 
-        # Clients (lazy init)
-        self.openai_client = None
-        self.gemini_configured = False
-        self.anthropic_client = None
-        self.groq_client = None  # Lazy import without type to avoid missing SDK warnings
-
-        if self.openai_api_key:
-            try:
-                self.openai_client = OpenAI(api_key=self.openai_api_key)
-            except Exception as e:
-                logger.warning(f"Failed to init OpenAI client: {e}")
-        if self.gemini_api_key:
-            try:
-                cfg = getattr(genai, "configure", None)
-                if callable(cfg):
-                    cfg(api_key=self.gemini_api_key)
-                    self.gemini_configured = True
-            except Exception as e:
-                logger.warning(f"Failed to configure Gemini: {e}")
-        if self.anthropic_api_key:
-            try:
-                self.anthropic_client = anthropic.Anthropic(api_key=self.anthropic_api_key)
-            except Exception as e:
-                logger.warning(f"Failed to init Anthropic client: {e}")
-        if self.groq_api_key:
-            try:
-                # Import locally to prevent static analysis errors if SDK missing
-                import groq  # type: ignore
-                self.groq_client = groq.Groq(api_key=self.groq_api_key)
-            except Exception as e:
-                logger.warning(f"Failed to init Groq client: {e}")
+    def select_model_for_component(self, user_prompt: str, model_preference: str = "auto") -> str:
+        """
+        Smart model selection based on component complexity and user preference.
+        
+        Args:
+            user_prompt: The user's component description
+            model_preference: "auto", "simple", "complex", "gpt-4o", "gpt-5", etc.
+            
+        Returns:
+            Model name to use
+        """
+        # Direct model selection
+        if model_preference in ["gpt-4o", "gpt-5", "gpt-4o-mini"]:
+            return model_preference
+            
+        # Analyze complexity
+        complexity_keywords = {
+            'simple': ['card', 'button', 'text', 'image', 'basic', 'simple'],
+            'complex': ['hero', 'banner', 'carousel', 'slider', 'dynamic', 'interactive', 
+                       'animation', 'multi-step', 'advanced', 'configuration', 'dialog',
+                       'custom styling', 'theme', 'responsive', 'positioning']
+        }
+        
+        prompt_lower = user_prompt.lower()
+        simple_score = sum(1 for keyword in complexity_keywords['simple'] if keyword in prompt_lower)
+        complex_score = sum(1 for keyword in complexity_keywords['complex'] if keyword in prompt_lower)
+        
+        # Model selection logic
+        if model_preference == "simple" or (model_preference == "auto" and simple_score > complex_score and len(user_prompt) < 100):
+            return "gpt-4o"  # Cost-effective for simple components
+        elif model_preference == "complex" or (model_preference == "auto" and (complex_score > simple_score or len(user_prompt) > 200)):
+            return "gpt-5"   # Better consistency for complex components
+        else:
+            return "gpt-4o"  # Default to cost-effective option
 
         template_dir = Path(__file__).parent.parent / "templates"
         self.jinja_env = Environment(loader=FileSystemLoader(template_dir))
@@ -144,7 +209,7 @@ class ComponentService:
             logger.error(f"Raw response: {response}")
             raise ValueError(f"Failed to parse JSON response from {agent_name}: {error}")
 
-    async def call_openai_image(self, prompt: str, system_prompt: str, data_url=None, model_name: Optional[str] = None):
+    async def call_openai_image(self, prompt: str, system_prompt: str, data_url=None, model_name: Optional[str] = None, temperature: float = 1.0):
         logger.info(f"in call_openai_image with data_url")
         messages: List[Dict[str, Any]] = [
             {
@@ -157,13 +222,22 @@ class ComponentService:
         ]
         if not self.openai_client:
             raise ValueError("OpenAI client not configured")
-        return self.openai_client.chat.completions.create(
-            model=(model_name or "gpt-4o"),
-            messages=cast(Any, messages),
-            temperature=0.7
-        )
+        
+        # GPT-5 doesn't support temperature parameter
+        model_to_use = model_name or "gpt-5"
+        if model_to_use == "gpt-5":
+            return self.openai_client.chat.completions.create(
+                model=model_to_use,
+                messages=cast(Any, messages)
+            )
+        else:
+            return self.openai_client.chat.completions.create(
+                model=model_to_use,
+                messages=cast(Any, messages),
+                temperature=temperature
+            )
 
-    async def call_openai(self, prompt: str, system_prompt: str, model_name: Optional[str] = None):
+    async def call_openai(self, prompt: str, system_prompt: str, model_name: Optional[str] = None, temperature: float = 1.0):
         logger.info(f"in call_openai without data_url")
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
@@ -171,14 +245,24 @@ class ComponentService:
         ]
         if not self.openai_client:
             raise ValueError("OpenAI client not configured")
-        return self.openai_client.chat.completions.create(
-            model=(model_name or "gpt-4o"),
-            messages=cast(Any, messages),
-            temperature=0.7
-        )
+        
+        # GPT-5 doesn't support temperature parameter
+        model_to_use = model_name or "gpt-5"
+        if model_to_use == "gpt-5":
+            return self.openai_client.chat.completions.create(
+                model=model_to_use,
+                messages=cast(Any, messages)
+            )
+        else:
+            return self.openai_client.chat.completions.create(
+                model=model_to_use,
+                messages=cast(Any, messages),
+                temperature=temperature
+            )
 
     async def call_openai_with_history(self, prompt: str, system_prompt: str,
-                                       chat_history: Optional[List[ChatMessage]], model_name: Optional[str] = None, data_url=None):
+                                       chat_history: Optional[List[ChatMessage]], model_name: Optional[str] = None, 
+                                       temperature: float = 1.0, data_url=None):
         """Call OpenAI with chat history for refinement"""
         logger.info(f"in call_openai_with_history")
 
@@ -215,11 +299,20 @@ class ComponentService:
 
         if not self.openai_client:
             raise ValueError("OpenAI client not configured")
-        return self.openai_client.chat.completions.create(
-            model=(model_name or "gpt-4o"),
-            messages=cast(Any, messages),
-            temperature=0.7
-        )
+        
+        # GPT-5 doesn't support temperature parameter
+        model_to_use = model_name or "gpt-5"
+        if model_to_use == "gpt-5":
+            return self.openai_client.chat.completions.create(
+                model=model_to_use,
+                messages=cast(Any, messages)
+            )
+        else:
+            return self.openai_client.chat.completions.create(
+                model=model_to_use,
+                messages=cast(Any, messages),
+                temperature=temperature
+            )
 
     async def call_gemini(self, prompt: str, system_prompt: str, image_file=None, model_name: Optional[str] = None):
         if not self.gemini_configured:
@@ -238,7 +331,7 @@ class ComponentService:
 
     async def call_anthropic(self, prompt: str, system_prompt: str = '', image: Optional[bytes] = None,
                              chat_history: Optional[List[ChatMessage]] = None,
-                             model_name: Optional[str] = None):
+                             model_name: Optional[str] = None, temperature: float = 1.0):
         if not self.anthropic_client:
             raise ValueError("Anthropic client not configured")
 
@@ -277,12 +370,12 @@ class ComponentService:
             max_tokens=4096,
             system=cast(Any, sys_param),
             messages=cast(Any, messages),
-            temperature=0.7,
+            temperature=temperature,
         )
 
     async def call_groq(self, prompt: str, system_prompt: str = '',
                          chat_history: Optional[List[ChatMessage]] = None,
-                         model_name: Optional[str] = None):
+                         model_name: Optional[str] = None, temperature: float = 1.0):
         if not self.groq_client:
             raise ValueError("Groq client not configured")
 
@@ -302,34 +395,45 @@ class ComponentService:
         return self.groq_client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.7,
+            temperature=temperature,
         )
 
     async def call_llm(self, prompt: str, system_prompt: str = '', image: Optional[bytes] = None,
                        chat_history: Optional[List[ChatMessage]] = None,
-                       provider: Optional[str] = None, model_name: Optional[str] = None):
+                       provider: Optional[str] = None, model_name: Optional[str] = None, 
+                       temperature: float = 1.0):
         """Enhanced LLM call with optional chat history"""
         try:
             provider = (provider or self.default_provider).lower()
+            
+            # Handle temperature restrictions for newer OpenAI models
+            if model_name in ["gpt-5"] and temperature != 1.0:
+                temperature = 1.0
+                logger.info(f"Adjusted temperature to 1.0 for {model_name} model")
+            elif model_name in ["gpt-4o", "gpt-4o-mini"] and temperature not in [0.7, 1.0]:
+                # Try default temperature for GPT-4o models if having issues
+                temperature = 1.0
+                logger.info(f"Adjusted temperature to 1.0 for {model_name} model compatibility")
+            
             if provider == "openai":
                 if image:
                     base64_image = base64.b64encode(image).decode("utf-8")
                     image_url = f"data:image/png;base64,{base64_image}"
                     logger.info(f"image_url: {image_url[:50]}")
-                    return await self.call_openai_image(prompt, system_prompt, image_url, model_name)
+                    return await self.call_openai_image(prompt, system_prompt, image_url, model_name, temperature)
                 else:
                     if chat_history:
-                        return await self.call_openai_with_history(prompt, system_prompt, chat_history, model_name)
+                        return await self.call_openai_with_history(prompt, system_prompt, chat_history, model_name, temperature)
                     else:
-                        return await self.call_openai(prompt, system_prompt, model_name)
+                        return await self.call_openai(prompt, system_prompt, model_name, temperature)
             elif provider == "gemini":
                 return await self.call_gemini(prompt, system_prompt, None, model_name)
             elif provider in ("anthropic", "claude"):
-                return await self.call_anthropic(prompt, system_prompt, image, chat_history, model_name)
+                return await self.call_anthropic(prompt, system_prompt, image, chat_history, model_name, temperature)
             elif provider in ("llama", "groq"):
                 if image is not None:
                     raise NotImplementedError("Llama via Groq does not support images in this build")
-                return await self.call_groq(prompt, system_prompt, chat_history, model_name)
+                return await self.call_groq(prompt, system_prompt, chat_history, model_name, temperature)
             else:
                 raise ValueError(f"Unsupported provider: {provider}")
         except Exception as e:
@@ -391,22 +495,66 @@ class ComponentService:
         except Exception as e:
             raise ValueError(f"Error processing response: {e}")
 
-    async def image_agent_generate_html(self, user_prompt: str, image, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
-        prompt_file = Path(__file__).parent.parent / "prompts" / "aem" / "image_prompt.txt"
+    def validate_dialog_xml(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate and fix dialog XML structure if needed"""
+        try:
+            if 'dialog' in response and '_cq_dialog/.content.xml' in response['dialog']:
+                dialog_xml = response['dialog']['_cq_dialog/.content.xml']
+                
+                # Check for incorrect primary type
+                if 'jcr:primaryType="nt:unstructured"' in dialog_xml and 'jcr:primaryType="cq:Dialog"' not in dialog_xml:
+                    logger.warning("⚠️ Detected incorrect dialog primary type - fixing automatically")
+                    # Fix the primary type
+                    dialog_xml = dialog_xml.replace(
+                        'jcr:primaryType="nt:unstructured"',
+                        'jcr:primaryType="cq:Dialog"',
+                        1  # Only replace the first occurrence (root node)
+                    )
+                    response['dialog']['_cq_dialog/.content.xml'] = dialog_xml
+                    logger.info("✅ Fixed dialog primary type to cq:Dialog")
+                
+                elif 'jcr:primaryType="cq:Dialog"' in dialog_xml:
+                    logger.info("✅ Dialog XML has correct primary type")
+                else:
+                    logger.warning("⚠️ Dialog XML structure unclear - manual review recommended")
+            
+            return response
+        except Exception as e:
+            logger.error(f"Error validating dialog XML: {e}")
+            return response  # Return original response if validation fails
+
+    async def image_agent_generate_html(self, user_prompt: str, image, chat_history: Optional[List[ChatMessage]] = None, 
+                                       model_name: str = "gpt-4o", temperature: float = 1.0) -> Dict[str, Any]:
+        prompt_file = Path(__file__).parent.parent / "prompts" / "aem" / "image_agent.txt"
         with open(prompt_file, 'r') as f:
             system_prompt = f.read()
 
         prompt = f"""USER REQUIREMENT: {user_prompt}
-        Analyze this UI and generate the code."""
+        Analyze the provided image and generate HTML/CSS code."""
 
-        logger.info("Sending image bytes to llm")
-        response = await self.call_llm(prompt, system_prompt, image, chat_history)
-        logger.debug("in image_agent_generate_html calling extract html method")
+        # Use selected model for image analysis
+        response = await self.call_llm(prompt, system_prompt, image, chat_history, 
+                                     model_name=model_name, temperature=temperature)
         response = self.extract_and_format_response(response, require_html_code=True)
-        logger.debug(f"in image_agent_generate_html fetching response :: {response}")
         return response['data'] if 'data' in response else response
 
-    async def text_agent_generate_html(self, user_prompt: str, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
+    async def text_agent_generate_html(self, user_prompt: str, chat_history: Optional[List[ChatMessage]] = None, 
+                                      model_name: str = "gpt-4o", temperature: float = 1.0) -> Dict[str, Any]:
+        prompt_file = Path(__file__).parent.parent / "prompts" / "aem" / "text_agent.txt"
+        with open(prompt_file, 'r') as f:
+            system_prompt = f.read()
+
+        prompt = f"""USER REQUIREMENT: {user_prompt}
+        Generate HTML/CSS code based on the text description."""
+
+        # Use selected model for text-based HTML generation
+        response = await self.call_llm(prompt, system_prompt, None, chat_history, 
+                                     model_name=model_name, temperature=temperature)
+        response = self.extract_and_format_response(response, require_html_code=True)
+        return response['data'] if 'data' in response else response
+
+    async def text_agent_generate_html(self, user_prompt: str, chat_history: Optional[List[ChatMessage]] = None, 
+                                      model_name: str = "gpt-4o", temperature: float = 1.0) -> Dict[str, Any]:
         """Generate HTML/CSS from text requirements when no image is provided."""
         prompt_file = Path(__file__).parent.parent / "prompts" / "aem" / "text_prompt.txt"
         with open(prompt_file, 'r') as f:
@@ -420,7 +568,8 @@ class ComponentService:
         response = self.extract_and_format_response(response, require_html_code=True)
         return response['data'] if 'data' in response else response
 
-    async def agent1_requirements_and_sling_model(self, user_prompt: str, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
+    async def agent1_requirements_and_sling_model(self, user_prompt: str, chat_history: Optional[List[ChatMessage]] = None, 
+                                                 model_name: str = "gpt-4o", temperature: float = 1.0) -> Dict[str, Any]:
         prompt_file = Path(__file__).parent.parent / "prompts" / "aem" / "agent_1.txt"
         with open(prompt_file, 'r') as f:
             system_prompt = f.read()
@@ -428,78 +577,130 @@ class ComponentService:
         prompt = f"""USER REQUIREMENT: {user_prompt}
         Generate the complete analysis and Sling Model as specified."""
 
-        response = await self.call_llm(prompt, system_prompt, None, chat_history)
+        # Use selected model for complex analysis
+        response = await self.call_llm(prompt, system_prompt, None, chat_history, 
+                                     model_name=model_name, temperature=temperature)
         logger.debug(f"in agent1_requirements_and_sling_model fetching response :: {response}")
         response = self.extract_and_format_response(response, require_html_code=False)
         logger.debug(f"in agent1_requirements_and_sling_model fetching response after extraction :: {response}")
         return response['data'] if 'data' in response else response
 
-    async def agent2_htl_generator(self, shared_context: Dict[str, Any], sling_model: str, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
+    async def agent2_htl_generator(self, shared_context: Dict[str, Any], sling_model: str, chat_history: Optional[List[ChatMessage]] = None, 
+                                 model_name: str = "gpt-4o", temperature: float = 1.0) -> Dict[str, Any]:
         prompt_file = Path(__file__).parent.parent / "prompts" / "aem" /  "agent_2.txt"
         with open(prompt_file, 'r') as f:
             system_prompt = f.read()
 
         prompt = f"""SHARED CONTEXT: {json.dumps(shared_context, indent=2)}
         SLING MODEL REFERENCE: {sling_model}
+        
+        CRITICAL: Ensure type-safe HTL expressions and proper BEM CSS classes.
+        
         Generate the complete HTL template as specified.
         Given an AI agent has analyzed the design and provided the html and css code, generate the HTL template for the AEM component."""
 
-        response = await self.call_llm(prompt, system_prompt, None, chat_history)
+        # Use selected model for HTL template generation
+        response = await self.call_llm(prompt, system_prompt, None, chat_history, 
+                                     model_name=model_name, temperature=temperature)
         response = self.extract_and_format_response(response, require_html_code=False)
         return response['data'] if 'data' in response else response
 
-    async def agent3_dialog_generator(self, shared_context: Dict[str, Any], sling_model: str, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
+    async def agent3_dialog_generator(self, shared_context: Dict[str, Any], sling_model: str, chat_history: Optional[List[ChatMessage]] = None, 
+                                     model_name: str = "gpt-4o", temperature: float = 1.0) -> Dict[str, Any]:
         prompt_file = Path(__file__).parent.parent / "prompts" / "aem" / "agent_3.txt"
         with open(prompt_file, 'r') as f:
             system_prompt = f.read()
 
         prompt = f"""SHARED CONTEXT: {json.dumps(shared_context, indent=2)}
         SLING MODEL REFERENCE: {sling_model}
+        
+        ⚠️ CRITICAL REMINDER: Dialog root MUST use jcr:primaryType="cq:Dialog" (NOT nt:unstructured)
+        
         Generate the complete dialog configuration as specified."""
 
-        response = await self.call_llm(prompt, system_prompt, None, chat_history)
+        # Use selected model for dialog generation
+        response = await self.call_llm(prompt, system_prompt, None, chat_history, 
+                                     model_name=model_name, temperature=temperature)
         response = self.extract_and_format_response(response, require_html_code=False)
-        return response['data'] if 'data' in response else response
+        
+        # Validate dialog XML structure
+        validated_response = self.validate_dialog_xml(response)
+        return validated_response['data'] if 'data' in validated_response else validated_response
 
-    async def agent4_client_lib_generator(self, shared_context: Dict[str, Any], htl: str, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
+    async def agent4_client_lib_generator(self, shared_context: Dict[str, Any], htl: str, chat_history: Optional[List[ChatMessage]] = None, 
+                                         model_name: str = "gpt-4o", temperature: float = 1.0) -> Dict[str, Any]:
         prompt_file = Path(__file__).parent.parent / "prompts" / "aem" / "agent_4.txt"
         with open(prompt_file, 'r') as f:
             system_prompt = f.read()
 
         prompt = f"""SHARED CONTEXT: {json.dumps(shared_context, indent=2)}
         HTL REFERENCE: {htl}
+        
+        CRITICAL: Generate CSS classes that match HTL template exactly. Include responsive design.
+        
         Generate the complete client library structure as specified."""
 
-        response = await self.call_llm(prompt, system_prompt, None, chat_history)
+        # Use GPT-4o-mini for CSS generation - it's excellent at CSS and much faster
+        # Use selected model for client library generation  
+        response = await self.call_llm(prompt, system_prompt, None, chat_history, 
+                                     model_name=model_name, temperature=temperature)
         response = self.extract_and_format_response(response, require_html_code=False)
         return response['data'] if 'data' in response else response
 
-    async def generate_aem_component(self, user_prompt: str, image, session_id: Optional[str] = None) -> Dict[str, Any]:
-        """Main orchestrator method with chat history support"""
-        logger.info('Starting AEM Component Generation...')
+    async def generate_aem_component(self, user_prompt: str, image, session_id: Optional[str] = None, model_preference: str = "auto") -> Dict[str, Any]:
+        """Main orchestrator method with chat history support and progress tracking"""
+        import time
+        start_time = time.time()
+        
+        # Initialize progress tracker
+        if not session_id:
+            session_id = f"temp_{int(time.time())}"
+        
+        progress = ProgressTracker(session_id, total_steps=7)
+        progress.update_step(1, "🚀 Starting AEM Component Generation...")
+        
+        logger.info('🚀 Starting AEM Component Generation...')
+        
+        # Smart model selection based on complexity and preference
+        selected_model = self.select_model_for_component(user_prompt, model_preference)
+        logger.info(f'📊 Selected model: {selected_model} (preference: {model_preference})')
+        
+        # Set temperature to 1.0 for all models to ensure compatibility
+        temperature = 1.0
 
         # Get chat history if session_id is provided
         chat_history = []
-        if session_id:
+        if session_id and session_id != f"temp_{int(time.time())}":
             session = self.get_chat_session(session_id)
             if session:
                 chat_history = session.messages
 
         try:
-            logger.info('Starting AEM Component Generation...')
+            # Image/Text Agent (if needed)
+            progress.update_step(2, "📝 Processing input and analyzing requirements...")
+            image_gen_start = time.time()
             image_gen_result = None
             if image:
-                image_gen_result = await self.image_agent_generate_html(user_prompt, image, chat_history)
+                logger.info('🖼️  Image Agent: Processing image input...')
+                image_gen_result = await self.image_agent_generate_html(user_prompt, image, chat_history, selected_model, temperature)
                 logger.debug(f"Image generation result: {image_gen_result}")
             else:
-                # Generate HTML/CSS from text if no image is provided
-                image_gen_result = await self.text_agent_generate_html(user_prompt, chat_history)
+                logger.info('📝 Text Agent: Processing text input...')
+                image_gen_result = await self.text_agent_generate_html(user_prompt, chat_history, selected_model, temperature)
                 logger.debug(f"Text-based HTML/CSS generation result: {image_gen_result}")
+            
+            image_gen_time = time.time() - image_gen_start
+            logger.info(f'⏱️  Image/Text Agent completed in {image_gen_time:.2f}s')
 
             # Agent 1: Requirements Analysis & Sling Model
-            logger.info('Agent 1: Analyzing requirements and generating Sling Model...')
-            agent1_result = await self.agent1_requirements_and_sling_model(user_prompt, chat_history)
+            progress.update_step(3, "🧠 Agent 1: Analyzing requirements and generating Sling Model...")
+            agent1_start = time.time()
+            logger.info('🔍 Agent 1: Analyzing requirements and generating Sling Model...')
+            agent1_result = await self.agent1_requirements_and_sling_model(user_prompt, chat_history, selected_model, temperature)
             logger.debug(f'Agent 1: fetching agent1_result{agent1_result}')
+            
+            agent1_time = time.time() - agent1_start
+            logger.info(f'⏱️  Agent 1 completed in {agent1_time:.2f}s')
 
             if 'sharedContext' not in agent1_result or 'slingModel' not in agent1_result:
                 raise ValueError('Agent 1 failed to generate required outputs')
@@ -510,12 +711,17 @@ class ComponentService:
 
             shared_content = agent1_result['sharedContext']
 
-            # Agents 2 & 3: Can run in parallel
-            logger.info('Agent 2 & 3: Generating HTL and Dialog in parallel....')
-            agent2_task = self.agent2_htl_generator(agent1_result['sharedContext'], agent1_result['slingModel'], chat_history)
-            agent3_task = self.agent3_dialog_generator(agent1_result['sharedContext'], agent1_result['slingModel'], chat_history)
+            # Agents 2 & 3: Run in parallel for maximum speed
+            progress.update_step(4, "⚡ Agents 2&3: Generating HTL and Dialog in parallel...")
+            parallel_start = time.time()
+            logger.info('⚡ Agent 2 & 3: Generating HTL and Dialog in parallel....')
+            agent2_task = self.agent2_htl_generator(agent1_result['sharedContext'], agent1_result['slingModel'], chat_history, selected_model, temperature)
+            agent3_task = self.agent3_dialog_generator(agent1_result['sharedContext'], agent1_result['slingModel'], chat_history, selected_model, temperature)
 
             agent2_result, agent3_result = await asyncio.gather(agent2_task, agent3_task)
+            
+            parallel_time = time.time() - parallel_start
+            logger.info(f'⏱️  Agents 2 & 3 completed in parallel in {parallel_time:.2f}s')
 
             logger.debug(f'Agent 3: fetching agent3_result{agent3_result}')
 
@@ -523,16 +729,26 @@ class ComponentService:
                 raise ValueError('Agent 2 or 3 failed to generate required outputs')
 
             # Agent 4: Client Library (needs HTL from Agent 2)
-            logger.info('Agent 4: Generating Client Library...')
+            progress.update_step(5, "🎨 Agent 4: Generating Client Libraries...")
+            agent4_start = time.time()
+            logger.info('🎨 Agent 4: Generating Client Library...')
             agent4_result = await self.agent4_client_lib_generator(
                 agent1_result['sharedContext'],
                 agent2_result['htl'],
-                chat_history
+                chat_history,
+                selected_model,
+                temperature
             )
+            
+            agent4_time = time.time() - agent4_start
+            logger.info(f'⏱️  Agent 4 completed in {agent4_time:.2f}s')
 
             if 'clientLib' not in agent4_result:
                 raise ValueError('Agent 4 failed to generate required outputs')
 
+            # Final assembly
+            progress.update_step(6, "📁 Creating component files and structure...")
+            
             # Combine final results
             final_result = {
                 'htl': agent2_result['htl'],
@@ -544,15 +760,22 @@ class ComponentService:
                 'componentName': shared_content['componentName']
             }
 
-            logger.info('AEM Component Generation completed successfully!')
+            progress.update_step(7, "✅ Component generation complete!")
+            total_time = time.time() - start_time
+            logger.info(f'✅ AEM Component Generation completed successfully in {total_time:.2f}s!')
+            logger.info(f'📊 Timing breakdown: Image/Text: {image_gen_time:.1f}s, Agent1: {agent1_time:.1f}s, Agents2&3: {parallel_time:.1f}s, Agent4: {agent4_time:.1f}s')
+            
             return final_result
 
         except Exception as error:
-            logger.error(f'AEM Component Generation failed: {error}')
+            total_time = time.time() - start_time
+            progress.update_step(-1, f"❌ Generation failed: {str(error)}")
+            logger.error(f'❌ AEM Component Generation failed after {total_time:.2f}s: {error}')
             raise error
 
     async def generate_component(self, prompt: str, image,
-                                 session_id: Optional[str] = None, user_id: Optional[str] = None) -> Dict[str, Any]:
+                                 session_id: Optional[str] = None, user_id: Optional[str] = None, 
+                                 model_preference: str = "auto", image_url: Optional[str] = None) -> Dict[str, Any]:
         """Enhanced generate_component with chat history support (removed app_id/package)"""
         logger.info(f"In ComponentService generate_component :: {prompt}")
 
@@ -570,10 +793,12 @@ class ComponentService:
             elif isinstance(image, str) and image.startswith('data:'):
                 image_data = image
 
-        self.add_message_to_session(session_id, "user", prompt, image_data)
+        # Store image_url in message metadata if present
+        msg_metadata = {"image_url": image_url} if image_url else None
+        self.add_message_to_session(session_id, "user", prompt, image_data, msg_metadata)
 
         try:
-            component_data = await self.generate_aem_component(prompt, image, session_id)
+            component_data = await self.generate_aem_component(prompt, image, session_id, model_preference)
 
             logger.debug(f"In ComponentService ai_output :: {component_data}")
 
@@ -622,10 +847,13 @@ class ComponentService:
 
             # Add AI response message to session
             ai_response = f"Component '{component_data['componentName']}' generated successfully!"
-            self.add_message_to_session(session_id, "ai", ai_response, None, {
+            ai_metadata = {
                 'component_id': generated_component.component_id,
                 'component_name': component_data['componentName']
-            })
+            }
+            if image_url:
+                ai_metadata['image_url'] = image_url
+            self.add_message_to_session(session_id, "ai", ai_response, None, ai_metadata)
 
             # Create actual files in the output directory
             # Use default values for app_id and package since they're handled in prompts
@@ -644,7 +872,8 @@ class ComponentService:
                 "component_id": generated_component.component_id,
                 "outputDirs": output_dirs,
                 "structure": self._create_folder_structure("myapp", sanitized_component_name),  # Use default
-                "aiOutput": component_data
+                "aiOutput": component_data,
+                "image_url": image_url
             }
 
         except Exception as e:

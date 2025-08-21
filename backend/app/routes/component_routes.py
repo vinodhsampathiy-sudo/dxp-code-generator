@@ -53,6 +53,26 @@ class ComponentResponse(BaseModel):
     error: Optional[str] = None
     details: Optional[str] = None
 
+# Progress Tracking Endpoint
+@router.get("/progress/{session_id}")
+async def get_generation_progress(session_id: str):
+    """Get real-time progress for component generation"""
+    try:
+        progress = component_service.get_progress(session_id)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "progress": progress
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error getting progress: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"success": False, "error": "Failed to get progress"}
+        )
+
 # Chat Session Management Endpoints
 @router.post("/chat/sessions", response_model=SessionResponse)
 async def create_chat_session(session_data: ChatSessionCreate):
@@ -263,6 +283,7 @@ async def generate_component(
         componentDesc: str = Form(...),
         sessionId: Optional[str] = Form(None),
         userId: Optional[str] = Form(None),
+        modelPreference: Optional[str] = Form(default="auto"),  # auto, simple, complex, gpt-4o, gpt-5
         file: Optional[UploadFile] = File(default=None)
 ):
     """Generate a component (enhanced with session support)"""
@@ -270,17 +291,30 @@ async def generate_component(
         logger.info(f"Received component generation request")
         logger.debug(f"Request data: prompt='{componentDesc}', sessionId='{sessionId}'")
 
-        # Read and encode uploaded image
+
+        # Save uploaded image to static/uploads and get URL
+        image_url = None
         image_bytes = None
         if file is not None:
             image_bytes = await file.read()
             logger.info(f"Received image file: {file.filename}, size: {len(image_bytes)} bytes")
+            import uuid, os
+            ext = os.path.splitext(file.filename)[1] or ".png"
+            unique_name = f"{uuid.uuid4().hex}{ext}"
+            upload_dir = os.path.join(os.path.dirname(__file__), "../static/uploads")
+            os.makedirs(upload_dir, exist_ok=True)
+            image_path = os.path.join(upload_dir, unique_name)
+            with open(image_path, "wb") as f_img:
+                f_img.write(image_bytes)
+            image_url = f"/static/uploads/{unique_name}"
 
         result = await component_service.generate_component(
             prompt=componentDesc,
             image=image_bytes,
             session_id=sessionId,
-            user_id=userId
+            user_id=userId,
+            model_preference=modelPreference,
+            image_url=image_url
         )
 
         logger.info("Component generation completed successfully")
@@ -295,7 +329,8 @@ async def generate_component(
             structure=result.get('structure'),
             aiOutput=result.get('aiOutput'),
             error=result.get('error'),
-            details=result.get('details')
+            details=result.get('details'),
+            image_url=result.get('image_url', image_url)
         )
 
     except Exception as e:
