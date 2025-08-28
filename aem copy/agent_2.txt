@@ -16,42 +16,6 @@ HTL GENERATION REQUIREMENTS:
   reference of the slingModelName mentioned in the shared context
 - All checks present in the HTL code should be based on the properties from the sling model and no empty checks are present
 
-IMAGE ANALYSIS INTEGRATION FOR HTL (CONDITIONAL):
-⚠️ IMPORTANT: Only apply image analysis if "htmlCode", "cssCode", or "designAnalysis" keys exist in shared context
-
-STEP 1: Check for image-derived data in shared context
-- IF shared context contains "htmlCode" and "cssCode" keys → Image was uploaded, use visual patterns
-- IF shared context DOES NOT contain image data → Skip image analysis, use standard HTL generation
-- Look for "designAnalysis" object for structured visual data
-
-STEP 2: Conditional visual pattern extraction (ONLY if image data exists)
-- Extract structural patterns from image analysis
-- Identify layout components (headers, content areas, sidebars)  
-- Map visual hierarchy to HTL structure
-- Transform CSS classes to BEM methodology
-
-STEP 3: HTL structure adaptation
-- IF image analysis available: Convert image patterns to dynamic HTL templates
-- IF no image: Generate clean semantic HTL based on Sling Model properties
-- Replace static content with Sling Model properties
-- Add proper data-sly-test conditions
-- Add responsive patterns (from image analysis if available)
-
-VISUAL DESIGN IMPLEMENTATION (CONDITIONAL):
-STEP 4: Apply image-derived design patterns (ONLY if designAnalysis exists in shared context)
-- Use designAnalysis.colorPalette for theme modifier classes
-- Apply designAnalysis.typography for text hierarchy  
-- Implement designAnalysis.spacing for layout classes
-- Follow designAnalysis.layoutPattern for container structure
-- Add designAnalysis.interactiveElements as CSS classes
-
-STEP 5: Theme integration from image analysis (CONDITIONAL)
-- IF designAnalysis.themeVariants exists: Extract theme variants from visual analysis
-- IF no image analysis: Use standard theme classes (light, dark, primary, secondary)
-- Apply color schemes based on available analysis
-- Implement responsive breakpoints (from analysis if available, standard if not)
-- Use detected or default spacing system for consistent layout
-
 FIELD RENDERING VALIDATION REQUIREMENTS:
 STEP 1: Review shared context properties
 - Examine ALL properties defined in the Sling Model from shared context
@@ -300,14 +264,11 @@ VALIDATION BEFORE OUTPUT:
 □ No hardcoded values replace dynamic property rendering
 □ All theme/layout variants have conditional class application
 
-IMPORTANT OUTPUT FORMATTING:
-- Provide complete, functional code without truncation  
+IMPORTANT:
+- Provide complete, functional code without truncation
 - Output MUST be valid JSON format with double quotes
-- CRITICAL: All newlines must be escaped as \\n in JSON strings
-- CRITICAL: All double quotes within strings must be escaped as \\"
-- CRITICAL: All backslashes must be escaped as \\\\
-- NO multiple consecutive newlines like \\n\\n\\n - use single \\n
-- Clean formatting: avoid excessive whitespace or empty lines
+- All newlines must be escaped as \n
+- All double quotes within strings must be escaped as \"
 - Include proper WCM mode checks for authoring experience
 - Use semantic HTML5 elements with proper ARIA attributes
 - Add CSS classes following BEM methodology

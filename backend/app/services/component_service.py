@@ -828,15 +828,30 @@ class ComponentService:
         ui_apps_clientlib_js_dir.mkdir(parents=True, exist_ok=True)
         ui_apps_clientlib_css_dir.mkdir(parents=True, exist_ok=True)
 
-        # Helper function to process content and convert escaped newlines to actual newlines
+        # Enhanced helper function to process content and clean up formatting
         def process_file_content(content: str) -> str:
-            """Convert escaped newlines and other escape sequences to actual characters"""
+            """Convert escaped newlines and other escape sequences to actual characters, and clean up formatting"""
             if isinstance(content, str):
+                # First, convert escape sequences
                 content = content.replace('\\n', '\n')
                 content = content.replace('\\t', '\t')
                 content = content.replace('\\"', '"')
                 content = content.replace("\\'", "'")
                 content = content.replace('\\\\', '\\')
+                
+                # Clean up multiple consecutive newlines (preserve intentional spacing but remove excessive)
+                import re
+                # Replace 3+ consecutive newlines with just 2 (one blank line)
+                content = re.sub(r'\n{3,}', '\n\n', content)
+                
+                # Remove trailing whitespace from each line
+                lines = content.split('\n')
+                lines = [line.rstrip() for line in lines]
+                content = '\n'.join(lines)
+                
+                # Ensure file doesn't end with excessive newlines
+                content = content.rstrip('\n') + '\n'
+                
             return content
 
         # Write Sling Model Java class directly from AI output
@@ -961,6 +976,219 @@ class ComponentService:
                 }
             ]
         }
+
+    def search_existing_components(self, component_type: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """Search for existing components of a specific type across all sessions"""
+        try:
+            pipeline = [
+                {"$unwind": "$generated_components"},
+                {
+                    "$match": {
+                        "generated_components.component_name": {
+                            "$regex": component_type, 
+                            "$options": "i"
+                        }
+                    }
+                },
+                {
+                    "$project": {
+                        "session_id": 1,
+                        "session_title": 1,
+                        "component": "$generated_components"
+                    }
+                },
+                {"$sort": {"component.generation_timestamp": -1}},
+                {"$limit": limit}
+            ]
+            
+            results = list(self.chat_storage.db.chat_sessions.aggregate(pipeline))
+            
+            components = []
+            for result in results:
+                comp = result['component']
+                components.append({
+                    'component_id': comp.get('component_id'),
+                    'component_name': comp.get('component_name'),
+                    'sling_model_name': comp.get('sling_model_name'),
+                    'generation_timestamp': comp.get('generation_timestamp'),
+                    'session_id': result.get('session_id'),
+                    'session_title': result.get('session_title'),
+                    'metadata': comp.get('generation_metadata', {})
+                })
+            
+            return components
+            
+        except Exception as e:
+            logger.error(f"Failed to search existing components: {e}")
+            return []
+    
+    def get_component_details(self, session_id: str, component_id: str) -> Optional[Dict[str, Any]]:
+        """Get full details of a specific component"""
+        component = self.chat_storage.get_component_by_id(session_id, component_id)
+        if not component:
+            return None
+        
+        return {
+            'component_id': component.component_id,
+            'component_name': component.component_name,
+            'sling_model_name': component.sling_model_name,
+            'htl_code': component.htl_code,
+            'sling_model_code': component.sling_model_code,
+            'dialog_code': component.dialog_code,
+            'content_xml': component.content_xml,
+            'client_lib': component.client_lib,
+            'generation_timestamp': component.generation_timestamp,
+            'metadata': component.generation_metadata
+        }
+    
+    async def reuse_existing_component(self, session_id: str, source_component_id: str, 
+                                     source_session_id: str, customization_prompt: Optional[str] = None) -> Dict[str, Any]:
+        """Reuse an existing component with optional customization"""
+        logger.info(f"Reusing component {source_component_id} from session {source_session_id}")
+        
+        # Get the source component
+        source_component = self.chat_storage.get_component_by_id(source_session_id, source_component_id)
+        if not source_component:
+            return {"success": False, "error": "Source component not found"}
+        
+        # Get current session
+        session = self.get_chat_session(session_id)
+        if not session:
+            return {"success": False, "error": "Target session not found"}
+        
+        try:
+            if customization_prompt:
+                # Apply customizations using AI
+                logger.info("Applying customizations to existing component...")
+                
+                customization_context = f"""
+                CUSTOMIZATION REQUEST: {customization_prompt}
+                
+                EXISTING COMPONENT TO CUSTOMIZE:
+                Component Name: {source_component.component_name}
+                Sling Model Name: {source_component.sling_model_name}
+                
+                CURRENT HTL CODE:
+                {source_component.htl_code}
+                
+                CURRENT SLING MODEL CODE:
+                {source_component.sling_model_code}
+                
+                CURRENT DIALOG CODE:
+                {source_component.dialog_code}
+                
+                CURRENT CLIENT LIB:
+                {json.dumps(source_component.client_lib, indent=2)}
+                
+                Please customize the component based on the user's request while maintaining the existing structure.
+                """
+                
+                # Generate customized component
+                customized_data = await self.generate_aem_component(customization_context, None, session_id)
+                
+                # Handle dialog data
+                dialog_content = customized_data['dialog']
+                if isinstance(dialog_content, dict):
+                    if '_cq_dialog/.content.xml' in dialog_content:
+                        dialog_code = dialog_content['_cq_dialog/.content.xml']
+                    else:
+                        dialog_code = next(iter(dialog_content.values()))
+                else:
+                    dialog_code = dialog_content
+                
+                # Create customized component
+                reused_component = GeneratedComponent(
+                    component_name=customized_data.get('componentName', source_component.component_name),
+                    sling_model_name=customized_data.get('slingModelName', source_component.sling_model_name),
+                    htl_code=customized_data['htl'],
+                    sling_model_code=customized_data['slingModel'],
+                    dialog_code=dialog_code,
+                    content_xml=customized_data['content_xml'],
+                    client_lib=customized_data['clientLib'],
+                    generation_metadata={
+                        'action': 'reuse_with_customization',
+                        'source_component_id': source_component_id,
+                        'source_session_id': source_session_id,
+                        'customization_prompt': customization_prompt
+                    }
+                )
+                
+                ai_response = f"Component '{source_component.component_name}' reused and customized successfully!"
+                
+            else:
+                # Direct reuse without customization
+                logger.info("Reusing component without customization...")
+                
+                reused_component = GeneratedComponent(
+                    component_name=source_component.component_name,
+                    sling_model_name=source_component.sling_model_name,
+                    htl_code=source_component.htl_code,
+                    sling_model_code=source_component.sling_model_code,
+                    dialog_code=source_component.dialog_code,
+                    content_xml=source_component.content_xml,
+                    client_lib=source_component.client_lib,
+                    generation_metadata={
+                        'action': 'reuse_direct',
+                        'source_component_id': source_component_id,
+                        'source_session_id': source_session_id
+                    }
+                )
+                
+                ai_response = f"Component '{source_component.component_name}' reused successfully!"
+            
+            # Add reused component to current session
+            self.chat_storage.add_component_to_session(session_id, reused_component)
+            
+            # Add AI response message
+            self.add_message_to_session(session_id, "ai", ai_response, None, {
+                'component_id': reused_component.component_id,
+                'action': 'component_reused'
+            })
+            
+            # Generate sanitized component name for file creation
+            sanitized_name = re.sub(r'[^a-z0-9]', '', reused_component.component_name.lower().replace(' ', ''))
+            
+            # Create files for reused component
+            component_data = {
+                'componentName': reused_component.component_name,
+                'slingModelName': reused_component.sling_model_name,
+                'htl': reused_component.htl_code,
+                'slingModel': reused_component.sling_model_code,
+                'dialog': reused_component.dialog_code,
+                'content_xml': reused_component.content_xml,
+                'clientLib': reused_component.client_lib
+            }
+            
+            output_dirs = self._create_component_files(
+                component_data,
+                "myapp",
+                "com.mycompany.myapp",
+                sanitized_name,
+                reused_component.sling_model_name
+            )
+            
+            return {
+                "success": True,
+                "message": "✅ Component reused successfully.",
+                "session_id": session_id,
+                "component_id": reused_component.component_id,
+                "source_component_id": source_component_id,
+                "customized": customization_prompt is not None,
+                "outputDirs": output_dirs,
+                "aiOutput": component_data
+            }
+            
+        except Exception as e:
+            error_message = f"Failed to reuse component: {str(e)}"
+            self.add_message_to_session(session_id, "ai", error_message)
+            
+            logger.error(f"Component reuse failed: {str(e)}")
+            return {
+                "success": False,
+                "error": "Component reuse failed.",
+                "details": str(e),
+                "session_id": session_id
+            }
 
     def __del__(self):
         """Cleanup MongoDB connection when service is destroyed"""

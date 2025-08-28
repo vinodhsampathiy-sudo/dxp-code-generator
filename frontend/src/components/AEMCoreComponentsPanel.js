@@ -17,7 +17,7 @@ const AEMCoreComponentsPanel = () => {
 
   const fetchConfig = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/aem/core-components/config');
+      const response = await fetch('http://localhost:5001/api/aem/core-components/config');
       const data = await response.json();
       setConfig(data);
     } catch (error) {
@@ -29,7 +29,7 @@ const AEMCoreComponentsPanel = () => {
   const fetchComponents = async () => {
     try {
       setLoading(true);
-      const response = await fetch('http://localhost:5000/api/aem/core-components/components');
+      const response = await fetch('http://localhost:5001/api/aem/core-components/components');
       const data = await response.json();
       
       if (data.success) {
@@ -48,7 +48,7 @@ const AEMCoreComponentsPanel = () => {
   const fetchComponentDetails = async (componentName) => {
     try {
       setLoading(true);
-      const response = await fetch(`http://localhost:5000/api/aem/core-components/components/${componentName}`);
+      const response = await fetch(`http://localhost:5001/api/aem/core-components/components/${componentName}`);
       const data = await response.json();
       
       if (data.success) {
@@ -67,7 +67,7 @@ const AEMCoreComponentsPanel = () => {
 
   const clearCache = async () => {
     try {
-      const response = await fetch('http://localhost:5000/api/aem/core-components/clear-cache', {
+      const response = await fetch('http://localhost:5001/api/aem/core-components/clear-cache', {
         method: 'POST'
       });
       const data = await response.json();

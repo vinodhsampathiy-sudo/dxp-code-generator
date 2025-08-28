@@ -319,7 +319,7 @@ RULES for .content.xml generation:
 IMPORTANT:
 - Provide complete, functional code without truncation
 - Output MUST be valid JSON format with double quotes
-- CRITICAL: All newlines must be escaped as \\n in JSON strings
+- All newlines must be escaped as \n
 - All double quotes within strings must be escaped as \"
 - Take examples of dialog and .content.xml from the AEM core components repository v2.20.8 - https://github.com/adobe/aem-core-wcm-components/tree/core.wcm.components.reactor-2.20.8/content/src/content/jcr_root/apps/core/wcm/components
 - Do not include any other resource type strings such as 'wknd/components/content/{componentName}' or 'wknd/components/content/v1/{componentName}'
@@ -332,7 +332,7 @@ IMPORTANT:
 IMPORTANT:
 - Provide complete, functional code without truncation
 - Output MUST be valid JSON format with double quotes
-- CRITICAL: All newlines must be escaped as \\n in JSON strings
+- All newlines must be escaped as \n
 - All double quotes within strings must be escaped as \"
 - Take examples of dialog and .content.xml from the AEM core components repository v2.20.8 - https://github.com/adobe/aem-core-wcm-components/tree/core.wcm.components.reactor-2.20.8/content/src/content/jcr_root/apps/core/wcm/components
 - Do not include any other resource type strings such as 'wknd/components/content/{componentName}' or 'wknd/components/content/v1/{componentName}'
@@ -345,8 +345,6 @@ IMPORTANT:
 IMPORTANT:
 - Provide complete, functional code without truncation
 - Output MUST be valid JSON format with double quotes
-- CRITICAL: All newlines must be escaped as \\n in JSON strings
+- All newlines must be escaped as \n
 - All double quotes within strings must be escaped as \"
 - Take examples of dialog and .content.xml from the AEM core components repository v2.20.8 - https://github.com/adobe/aem-core-wcm-components/tree/core.wcm.components.reactor-2.20.8/content/src/content/jcr_root/apps/core/wcm/components
-- CRITICAL: NO multiple consecutive newlines like \n\n\n - use single \n
-- Clean formatting: avoid excessive whitespace or empty lines in generated code

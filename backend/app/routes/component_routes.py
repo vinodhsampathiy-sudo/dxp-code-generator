@@ -8,14 +8,131 @@ from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request, File, UploadFile, Form, Query
 from pydantic import BaseModel
 from ..services.component_service import ComponentService
+from ..chatStorage.chat_model import ChatStorage
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 component_service = ComponentService()
 
-# Simplified Pydantic Models for API (removed app_id/package)
-class ComponentRequest(BaseModel):
+# Simplified Pydanti# New Pydantic models for component search and reuse
+class ComponentSearchRequest(BaseModel):
+    component_type: str
+    limit: Optional[int] = 10
+
+class ComponentReuseRequest(BaseModel):
+    session_id: str
+    source_component_id: str
+    source_session_id: str
+    customization_prompt: Optional[str] = None
+
+# Component search and reuse endpoints
+@router.get("/test-search")
+async def test_search():
+    """Test search endpoint"""
+    return {"message": "Search endpoint is working"}
+
+@router.get("/search")
+async def search_components(component_type: str = Query(...), limit: int = Query(default=10)):
+    """Search for existing components by type"""
+    try:
+        logger.info(f"Searching for components of type: {component_type}")
+        
+        components = component_service.search_existing_components(component_type, limit)
+        
+        return {
+            "success": True,
+            "message": f"Found {len(components)} components matching '{component_type}'",
+            "components": components
+        }
+        
+    except Exception as e:
+        logger.error(f"Error searching components: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Component search failed",
+                "details": str(e)
+            }
+        )
+
+@router.get("/{session_id}/{component_id}")
+async def get_component_details(session_id: str, component_id: str):
+    """Get detailed information about a specific component"""
+    try:
+        logger.info(f"Getting component details: {component_id} from session: {session_id}")
+        
+        component = component_service.get_component_details(session_id, component_id)
+        
+        if not component:
+            raise HTTPException(
+                status_code=404,
+                detail="Component not found"
+            )
+        
+        return {
+            "success": True,
+            "component": component
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting component details: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Failed to get component details",
+                "details": str(e)
+            }
+        )
+
+@router.post("/reuse", response_model=ComponentResponse)
+async def reuse_component(request: ComponentReuseRequest):
+    """Reuse an existing component with optional customization"""
+    try:
+        logger.info(f"Reusing component {request.source_component_id} from session {request.source_session_id}")
+        
+        result = await component_service.reuse_existing_component(
+            session_id=request.session_id,
+            source_component_id=request.source_component_id,
+            source_session_id=request.source_session_id,
+            customization_prompt=request.customization_prompt
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "Component reuse failed")
+            )
+        
+        return ComponentResponse(**result)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reusing component: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "Component reuse failed",
+                "details": str(e)
+            }
+        )
+
+# Legacy endpoint for backward compatibility (if needed)
+@router.post("/component/generate", response_model=ComponentResponse)
+async def generate_component_legacy(
+        componentDesc: str = Form(...),
+        file: Optional[UploadFile] = File(default=None)
+):
+    """Legacy endpoint for backward compatibility"""
+    return await generate_component(
+        componentDesc=componentDesc,
+        sessionId=None,
+        userId=None,
+        file=file
+    )
     componentDesc: str
     sessionId: Optional[str] = None
     userId: Optional[str] = None
@@ -29,6 +146,17 @@ class ComponentRefinementRequest(BaseModel):
     component_id: str
     refinement_prompt: str
     user_id: Optional[str] = None
+
+# New Pydantic models for component search and reuse
+class ComponentSearchRequest(BaseModel):
+    component_type: str
+    limit: Optional[int] = 10
+
+class ComponentReuseRequest(BaseModel):
+    session_id: str
+    source_component_id: str
+    source_session_id: str
+    customization_prompt: Optional[str] = None
 
 class MessageRequest(BaseModel):
     message_type: str = "user"
@@ -52,6 +180,8 @@ class ComponentResponse(BaseModel):
     aiOutput: Optional[dict] = None
     error: Optional[str] = None
     details: Optional[str] = None
+
+# Component search and reuse endpoints
 
 # Chat Session Management Endpoints
 @router.post("/chat/sessions", response_model=SessionResponse)

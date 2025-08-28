@@ -274,13 +274,26 @@ const DXPComponentGeneratorInterface = () => {
         const formattedMessages = session.messages.map(msg => ({
           id: msg.id,
           text: msg.content,
-          image: msg.image_data ? `data:image/png;base64,${msg.image_data}` : null,
+          image: msg.image_data || null, // Use image_data directly since it already contains the full data URL
           sender: msg.message_type === "user" ? "user" : "ai",
           timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           }),
         }));
+
+        console.log("🖼️ Image data check:", {
+          totalMessages: formattedMessages.length,
+          messagesWithImages: formattedMessages.filter(m => m.image).length,
+          imageDataSamples: formattedMessages
+            .filter(m => m.image)
+            .map(m => ({
+              id: m.id,
+              hasImage: !!m.image,
+              imagePrefix: m.image ? m.image.substring(0, 50) + "..." : null,
+              isValidDataUrl: m.image ? m.image.startsWith("data:image/") : false
+            }))
+        });
 
         // Convert components to the format expected by the UI
         const formattedComponents = session.generated_components.map(comp => ({
@@ -418,9 +431,9 @@ const DXPComponentGeneratorInterface = () => {
     setSuccessContext(null);
     
     const reqObj = {
-      projectPath: "../project_code",
+      projectPath: "/Users/vinodhsampath/Code/AI Final Demo/dxp-code-generator/project_code",
       mavenProfile: "autoInstallPackage",
-      packagePath: "../project_code/all/target/aem-guides-wknd.all-2.1.5-SNAPSHOT.zip",
+      packagePath: "/Users/vinodhsampath/Code/AI Final Demo/dxp-code-generator/project_code/all/target/aem-guides-wknd.all-2.1.5-SNAPSHOT.zip",
       autoInstall: true,
     };
     setIsLoading(true);
@@ -993,7 +1006,12 @@ const DXPComponentGeneratorInterface = () => {
           content_xml: selectedComponent.code?.content_xml
         },
         target_environment: "development",
-        user_id: "default_user"
+        user_id: "default_user",
+        // Add project path information for AEM Builder
+        projectPath: "/Users/vinodhsampath/Code/AI Final Demo/dxp-code-generator/project_code",
+        mavenProfile: "autoInstallPackage",
+        packagePath: "/Users/vinodhsampath/Code/AI Final Demo/dxp-code-generator/project_code/all/target/aem-guides-wknd.all-2.1.5-SNAPSHOT.zip",
+        autoInstall: true
       };
       
       // Prepare headers with optional Basic Auth
@@ -1096,17 +1114,36 @@ const DXPComponentGeneratorInterface = () => {
   };
 
   const setPreviewNodesFromCodeData = (codeData) => {
-    setHtmlNode(codeData?.code?.htl || "");
+    // Prioritize image analysis generated HTML/CSS over AEM-specific code
+    console.log("🎨 Preview - checking for image analysis code:", {
+      hasHtmlCode: !!codeData?.code?.htmlCode,
+      hasCssCode: !!codeData?.code?.cssCode,
+      hasDesignAnalysis: !!codeData?.code?.designAnalysis,
+      hasHtl: !!codeData?.code?.htl,
+      hasClientLib: !!codeData?.code?.clientLib
+    });
 
-    const cssFiles = Object.keys(codeData.code?.clientLib || {}).filter((key) =>
-        key.startsWith("css/")
-    );
-    if (cssFiles.length > 0) {
-      const cssFileContent = codeData.code.clientLib[cssFiles[0]].fileContents || codeData.code.clientLib[cssFiles[0]] || "";
-      setCssNode(cssFileContent);
+    // Check if we have image-analysis generated HTML/CSS
+    if (codeData?.code?.htmlCode && codeData?.code?.cssCode) {
+      console.log("✅ Using image analysis generated HTML and CSS for preview");
+      setHtmlNode(codeData.code.htmlCode);
+      setCssNode(codeData.code.cssCode);
     } else {
-      setCssNode("");
+      console.log("⚪ No image analysis code found, falling back to AEM HTL/CSS");
+      // Fallback to existing AEM HTL/CSS logic
+      setHtmlNode(codeData?.code?.htl || "");
+
+      const cssFiles = Object.keys(codeData.code?.clientLib || {}).filter((key) =>
+          key.startsWith("css/")
+      );
+      if (cssFiles.length > 0) {
+        const cssFileContent = codeData.code.clientLib[cssFiles[0]].fileContents || codeData.code.clientLib[cssFiles[0]] || "";
+        setCssNode(cssFileContent);
+      } else {
+        setCssNode("");
+      }
     }
+    
     setShowPreviewModal(true);
   };
 
@@ -1413,7 +1450,7 @@ const DXPComponentGeneratorInterface = () => {
       outline: "none",
     },
     rightPanel: {
-      flexBasis: "40%",
+      flexBasis: "50%",
       flexGrow: 1,
       flexShrink: 1,
       maxWidth: "40%",
@@ -2062,17 +2099,48 @@ const DXPComponentGeneratorInterface = () => {
                             }}
                         >
                           {message.image && (
-                              <img
-                                  src={message.image}
-                                  alt="Uploaded"
-                                  style={{
-                                    width: "100%",
-                                    maxWidth: "220px",
-                                    borderRadius: "8px",
-                                    marginBottom: "8px",
-                                    display: "block",
-                                  }}
-                              />
+                              <div style={{ marginBottom: "8px" }}>
+                                <img
+                                    src={message.image}
+                                    alt="Uploaded reference"
+                                    style={{
+                                      width: "100%",
+                                      maxWidth: "220px",
+                                      borderRadius: "8px",
+                                      display: "block",
+                                    }}
+                                    onLoad={() => {
+                                      console.log("✅ Image loaded successfully:", message.image?.substring(0, 50) + "...");
+                                    }}
+                                    onError={(e) => {
+                                      console.error("Failed to load image:", {
+                                        src: message.image,
+                                        srcLength: message.image?.length,
+                                        isValidDataUrl: message.image?.startsWith("data:image/"),
+                                        messageId: message.id,
+                                        error: e.type
+                                      });
+                                      e.target.style.display = 'none';
+                                      // Create a placeholder element
+                                      const placeholder = document.createElement('div');
+                                      placeholder.style.cssText = `
+                                        width: 220px;
+                                        height: 120px;
+                                        background: #f3f4f6;
+                                        border: 2px dashed #d1d5db;
+                                        border-radius: 8px;
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        color: #6b7280;
+                                        font-size: 14px;
+                                        margin-bottom: 8px;
+                                      `;
+                                      placeholder.textContent = '📷 Image not available';
+                                      e.target.parentNode.insertBefore(placeholder, e.target);
+                                    }}
+                                />
+                              </div>
                           )}
                           <div style={{ fontSize: 15 }}>{message.text}</div>
                           <div
@@ -2367,12 +2435,12 @@ const DXPComponentGeneratorInterface = () => {
                   left: 0,
                   width: "100vw",
                   height: "100vh",
-                  backgroundColor: "rgba(0,0,0,0.8)",
+                  backgroundColor: "rgba(0,0,0,0.85)",
                   zIndex: 9999,
                   display: "flex",
                   justifyContent: "center",
                   alignItems: "center",
-                  padding: "40px",
+                  padding: "20px",
                 }}
             >
               <div
@@ -2380,37 +2448,86 @@ const DXPComponentGeneratorInterface = () => {
                     backgroundColor: "white",
                     width: "100%",
                     height: "100%",
-                    maxWidth: "1200px",
-                    maxHeight: "90vh",
-                    overflowY: "auto",
-                    borderRadius: "12px",
-                    padding: "24px",
+                    maxWidth: "1400px",
+                    maxHeight: "95vh",
+                    borderRadius: "16px",
                     position: "relative",
+                    display: "flex",
+                    flexDirection: "column",
+                    boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
                   }}
               >
-                <button
-                    onClick={() => setShowPreviewModal(false)}
-                    style={{
-                      position: "absolute",
-                      top: "16px",
-                      right: "16px",
-                      background: "#ef4444",
-                      color: "white",
-                      border: "none",
-                      borderRadius: "6px",
-                      padding: "8px 12px",
-                      cursor: "pointer",
-                      fontWeight: "bold",
-                    }}
-                >
-                  Close
-                </button>
+                {/* Header with Close Button */}
+                <div style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  padding: "20px 24px 16px 24px",
+                  borderBottom: "1px solid #e5e7eb",
+                  borderRadius: "16px 16px 0 0",
+                  backgroundColor: "#f9fafb"
+                }}>
+                  <h3 style={{
+                    margin: 0,
+                    fontSize: "18px",
+                    fontWeight: "600",
+                    color: "#1f2937"
+                  }}>
+                    Component Preview
+                  </h3>
+                  <button
+                      onClick={() => setShowPreviewModal(false)}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: "40px",
+                        height: "40px",
+                        background: "#ef4444",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "50%",
+                        cursor: "pointer",
+                        fontSize: "18px",
+                        fontWeight: "bold",
+                        transition: "background-color 0.2s, transform 0.1s",
+                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)"
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.backgroundColor = "#dc2626";
+                        e.target.style.transform = "scale(1.05)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.backgroundColor = "#ef4444";
+                        e.target.style.transform = "scale(1)";
+                      }}
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
 
-                <VisualCodeSandbox
-                    view={"preview"}
-                    htmlNode={htmlNode}
-                    cssNode={cssNode}
-                />
+                {/* Preview Content */}
+                <div style={{
+                  flex: 1,
+                  overflow: "auto",
+                  padding: "24px",
+                  display: "flex",
+                  justifyContent: "center",
+                  alignItems: "flex-start",
+                  backgroundColor: "#ffffff"
+                }}>
+                  <div style={{
+                    width: "100%",
+                    maxWidth: "100%",
+                    minHeight: "400px"
+                  }}>
+                    <VisualCodeSandbox
+                        view={"preview"}
+                        htmlNode={htmlNode}
+                        cssNode={cssNode}
+                    />
+                  </div>
+                </div>
               </div>
             </div>
         )}

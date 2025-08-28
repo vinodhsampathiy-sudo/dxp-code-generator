@@ -13,8 +13,8 @@ const getApiBaseUrl = () => {
     return localStorageUrl;
   }
   
-  // Default to port 5000 (correct backend port)
-  return 'http://localhost:5000';
+  // Default to port 5001 (correct backend port)
+  return 'http://localhost:5001';
 };
 
 const getAemBuilderUrl = () => {

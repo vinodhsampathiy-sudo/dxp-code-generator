@@ -189,7 +189,7 @@ const AEMRightPanel = ({
       overflowY: "auto",
       padding: "16px",
       backgroundColor: "#ffffff",
-      maxHeight: "400px", // Set max height to enable scrolling
+      maxHeight: "600px", // Increased max height for better code visibility
     },
     codeBlock: {
       fontSize: "14px",
