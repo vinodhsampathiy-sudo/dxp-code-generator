@@ -25,7 +25,7 @@ If NO visual analysis data is available, generate standard Sling Model based sol
 
 IMPORT CHECKLIST (CRITICAL - VERIFY EACH):
     * import org.apache.sling.models.annotations.injectorspecific.ChildResource;
-    * import org.apache.sling.models.annotations.Optional;
+    * NEVER import org.apache.sling.models.annotations.Optional; (DEPRECATED/INCORRECT)
     * For nested models: Each inner class needs @Model(adaptables = Resource.class)me, type, sling model name and complexity
 2. Identify all required properties and their types
 3. Determine dependencies and design patterns
@@ -62,11 +62,19 @@ MULTIFIELD REQUIREMENTS (CRITICAL):
 - Use @ValueMapValue for simple properties within nested classes
 - Use @ResourcePath for path-based properties that need Resource adaptation
 - Example structure:
+CRITICAL IMPORT AND ANNOTATION REQUIREMENTS (COMPILATION FIX):
+- NEVER use injectionStrategy parameter with @ChildResource
+- NEVER use separate @Optional annotation - causes compilation errors
+- CORRECT PATTERN - Uses defaultInjectionStrategy = OPTIONAL on the @Model annotation:
+  @ChildResource  
+  private List<ItemModel> items;
+- INCORRECT PATTERN (WILL CAUSE COMPILATION ERROR):  
+  @ChildResource(injectionStrategy = InjectionStrategy.OPTIONAL)
+  private List<ItemModel> items;
+- INCORRECT PATTERN (WILL CAUSE COMPILATION ERROR):  
   @ChildResource
   @Optional
-  private List<ItemModel> items;
-  
-  @Model(adaptables = Resource.class)
+  private List<ItemModel> items;  @Model(adaptables = Resource.class)
   public static class ItemModel {
       @ValueMapValue
       private String title;
@@ -204,12 +212,11 @@ CLASS NAMING RULES (CRITICAL):
   * User says "Make a teaser component" → Class: "TeaserModel" → File: "TeaserModel.java"
     
 MULTIFIELD SLING MODEL PATTERN:
-- Use @ChildResource with @Optional for List<NestedClass>
+- Use @ChildResource for List<NestedClass> - no @Optional needed with defaultInjectionStrategy = OPTIONAL
 - Inner classes must be STATIC and have @Model annotation
 - Provide proper getters with null-safe returns
 - Example pattern:
     @ChildResource
-    @Optional
     private List<ItemModel> items;
     
     @Model(adaptables = Resource.class)
@@ -245,15 +252,13 @@ MULTIFIELD SLING MODEL PATTERN:
     * For string utilities: import org.apache.commons.lang3.StringUtils;
 
 CRITICAL INJECTION PATTERN - MODERN SLING MODELS:
-- NEVER use injectionStrategy parameter with @ChildResource
-- USE separate @Optional annotation instead
+- NEVER use @Optional annotation - causes compilation errors in modern AEM
+- USE defaultInjectionStrategy = OPTIONAL on the @Model annotation instead
 - CORRECT PATTERN:
   @ChildResource
-  @Optional  
   private List<ItemModel> items;
-- INCORRECT PATTERN (WILL CAUSE COMPILATION ERROR):  
-  @ChildResource(injectionStrategy = InjectionStrategy.OPTIONAL)
-  private List<ItemModel> items;
+- Model annotation with proper injection strategy:
+  @Model(adaptables = Resource.class, defaultInjectionStrategy = DefaultInjectionStrategy.OPTIONAL)
 
 FIELD-SPECIFIC IMPLEMENTATION:
 - IMAGE FIELDS: Always use String type with proper naming (backgroundImage, image, fileReference)
@@ -313,15 +318,15 @@ import org.apache.sling.models.annotations.Default;
 // CRITICAL: All injector-specific imports MUST be from injectorspecific package
 import org.apache.sling.models.annotations.injectorspecific.ValueMapValue;
 import org.apache.sling.models.annotations.injectorspecific.ChildResource;
-import org.apache.sling.models.annotations.Optional;
+// NEVER import Optional annotation - use defaultInjectionStrategy = OPTIONAL instead
 
 // Utility imports
 import org.apache.commons.lang3.StringUtils;
 ```
 
 COMMON IMPORT MISTAKES TO AVOID:
-❌ import org.apache.sling.models.annotations.Optional; (WRONG PATH - older AEM versions)
-✅ import org.apache.sling.models.annotations.Optional; (CORRECT PATH - modern AEM)
+❌ import org.apache.sling.models.annotations.Optional; (DO NOT USE - CAUSES COMPILATION ERRORS)
+✅ Use defaultInjectionStrategy = OPTIONAL on @Model annotation instead
 
 ❌ import org.apache.sling.models.annotations.ValueMapValue; (WRONG PATH) 
 ✅ import org.apache.sling.models.annotations.injectorspecific.ValueMapValue; (CORRECT PATH)
@@ -331,7 +336,7 @@ COMMON IMPORT MISTAKES TO AVOID:
 
 VALIDATION CHECKLIST FOR IMPORTS:
 □ All injector-specific annotations use .injectorspecific. package path
-□ Optional import for making injections optional
+□ NEVER import Optional annotation - use defaultInjectionStrategy instead
 □ ValueMapValue import includes .injectorspecific. in the path  
 □ ChildResource import includes .injectorspecific. in the path
 □ ArrayList import included when using new ArrayList<>() in getters

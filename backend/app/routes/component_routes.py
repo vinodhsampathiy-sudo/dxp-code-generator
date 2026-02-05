@@ -15,7 +15,46 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 component_service = ComponentService()
 
-# Simplified Pydanti# New Pydantic models for component search and reuse
+# Pydantic models
+class ComponentRequest(BaseModel):
+    componentDesc: str
+    sessionId: Optional[str] = None
+    userId: Optional[str] = None
+
+class ChatSessionCreate(BaseModel):
+    session_title: str
+    user_id: Optional[str] = None
+
+class ComponentRefinementRequest(BaseModel):
+    session_id: str
+    component_id: str
+    refinement_prompt: str
+    user_id: Optional[str] = None
+
+class MessageRequest(BaseModel):
+    message_type: str = "user"
+    content: str
+    image_data: Optional[str] = None
+    metadata: Optional[dict] = None
+
+class SessionResponse(BaseModel):
+    success: bool
+    session_id: Optional[str] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+class ComponentResponse(BaseModel):
+    success: bool
+    message: Optional[str] = None
+    session_id: Optional[str] = None
+    component_id: Optional[str] = None
+    outputDirs: Optional[dict] = None
+    structure: Optional[dict] = None
+    aiOutput: Optional[dict] = None
+    imageAnalysis: Optional[dict] = None
+    error: Optional[str] = None
+    details: Optional[str] = None
+
 class ComponentSearchRequest(BaseModel):
     component_type: str
     limit: Optional[int] = 10
@@ -56,7 +95,7 @@ async def search_components(component_type: str = Query(...), limit: int = Query
             }
         )
 
-@router.get("/{session_id}/{component_id}")
+@router.get("/component/{session_id}/{component_id}")
 async def get_component_details(session_id: str, component_id: str):
     """Get detailed information about a specific component"""
     try:
@@ -133,56 +172,6 @@ async def generate_component_legacy(
         userId=None,
         file=file
     )
-    componentDesc: str
-    sessionId: Optional[str] = None
-    userId: Optional[str] = None
-
-class ChatSessionCreate(BaseModel):
-    session_title: str
-    user_id: Optional[str] = None
-
-class ComponentRefinementRequest(BaseModel):
-    session_id: str
-    component_id: str
-    refinement_prompt: str
-    user_id: Optional[str] = None
-
-# New Pydantic models for component search and reuse
-class ComponentSearchRequest(BaseModel):
-    component_type: str
-    limit: Optional[int] = 10
-
-class ComponentReuseRequest(BaseModel):
-    session_id: str
-    source_component_id: str
-    source_session_id: str
-    customization_prompt: Optional[str] = None
-
-class MessageRequest(BaseModel):
-    message_type: str = "user"
-    content: str
-    image_data: Optional[str] = None
-    metadata: Optional[dict] = None
-
-class SessionResponse(BaseModel):
-    success: bool
-    session_id: Optional[str] = None
-    message: Optional[str] = None
-    error: Optional[str] = None
-
-class ComponentResponse(BaseModel):
-    success: bool
-    message: Optional[str] = None
-    session_id: Optional[str] = None
-    component_id: Optional[str] = None
-    outputDirs: Optional[dict] = None
-    structure: Optional[dict] = None
-    aiOutput: Optional[dict] = None
-    error: Optional[str] = None
-    details: Optional[str] = None
-
-# Component search and reuse endpoints
-
 # Chat Session Management Endpoints
 @router.post("/chat/sessions", response_model=SessionResponse)
 async def create_chat_session(session_data: ChatSessionCreate):
@@ -204,7 +193,6 @@ async def create_chat_session(session_data: ChatSessionCreate):
         logger.error(f"Failed to create chat session: {str(e)}", exc_info=True)
         return SessionResponse(success=False, error=str(e))
 
-@router.get("/chat/sessions/{session_id}")
 @router.get("/chat/sessions/{session_id}")
 async def get_chat_session(session_id: str):
     """Get a specific chat session"""

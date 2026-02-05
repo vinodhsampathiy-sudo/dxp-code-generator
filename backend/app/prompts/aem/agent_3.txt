@@ -175,6 +175,7 @@ LINK/CTA FIELDS:
 - For CTA components, always include: CTA Text, Link URL, Link Target, and CTA Style
 - Use pathbrowser for CTA Link (not textfield)
 - Include dropdown for CTA style variants
+- CRITICAL: For linkTarget checkbox, use value="blank" (NOT "_blank") to match Sling Model expectations
 - Example comprehensive CTA structure:
   <ctaText jcr:primaryType="nt:unstructured"
            sling:resourceType="granite/ui/components/coral/foundation/form/textfield"
@@ -190,7 +191,9 @@ LINK/CTA FIELDS:
               fieldLabel="Open in New Window"
               name="./linkTarget"
               text="Open link in new window"
-              value="blank"/>
+              value="blank"
+              uncheckedValue=""
+              checked="{Boolean}false"/>
   <ctaStyle jcr:primaryType="nt:unstructured"
             sling:resourceType="granite/ui/components/coral/foundation/form/select"
             fieldLabel="CTA Style"
@@ -327,26 +330,5 @@ IMPORTANT:
 - Include "<?xml version="1.0" encoding="UTF-8"?>" to specify the encoding
 - ALWAYS include proper namespace declarations in the jcr:root element: xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0"
 - The format should be: <jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" .../>
-- No need to have sling:resourceSuperType and cq:dialog and cq:designDialog in the .content.xml file for the cq:Component primaryType file
-
-IMPORTANT:
-- Provide complete, functional code without truncation
-- Output MUST be valid JSON format with double quotes
-- CRITICAL: All newlines must be escaped as \\n in JSON strings
-- All double quotes within strings must be escaped as \"
-- Take examples of dialog and .content.xml from the AEM core components repository v2.20.8 - https://github.com/adobe/aem-core-wcm-components/tree/core.wcm.components.reactor-2.20.8/content/src/content/jcr_root/apps/core/wcm/components
-- Do not include any other resource type strings such as 'wknd/components/content/{componentName}' or 'wknd/components/content/v1/{componentName}'
-- Ensure the componentGroup is set to "WKND.Content" for all generated components
-- Include "<?xml version="1.0" encoding="UTF-8"?>" to specify the encoding
-- ALWAYS include proper namespace declarations in the jcr:root element: xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0"
-- The format should be: <jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:sling="http://sling.apache.org/jcr/sling/1.0" xmlns:cq="http://www.day.com/jcr/cq/1.0" .../>
-- No need to have sling:resourceSuperType and cq:dialog and cq:designDialog in the .content.xml file for the cq:Component primaryType file
-
-IMPORTANT:
-- Provide complete, functional code without truncation
-- Output MUST be valid JSON format with double quotes
-- CRITICAL: All newlines must be escaped as \\n in JSON strings
-- All double quotes within strings must be escaped as \"
-- Take examples of dialog and .content.xml from the AEM core components repository v2.20.8 - https://github.com/adobe/aem-core-wcm-components/tree/core.wcm.components.reactor-2.20.8/content/src/content/jcr_root/apps/core/wcm/components
-- CRITICAL: NO multiple consecutive newlines like \n\n\n - use single \n
+- CRITICAL: NO multiple consecutive newlines like \\n\\n\\n - use single \\n
 - Clean formatting: avoid excessive whitespace or empty lines in generated code

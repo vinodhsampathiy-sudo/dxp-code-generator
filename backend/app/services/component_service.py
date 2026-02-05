@@ -603,15 +603,15 @@ class ComponentService:
                 # Old structure: dialog is a string
                 dialog_code = dialog_content
 
-            # Create GeneratedComponent object and save to session
+            # Create GeneratedComponent object and save to session (clean newlines for preview)
             generated_component = GeneratedComponent(
                 component_name=component_data['componentName'],
                 sling_model_name=component_data['slingModelName'],
-                htl_code=component_data['htl'],
-                sling_model_code=component_data['slingModel'],
-                dialog_code=dialog_code,
-                content_xml=component_data['content_xml'],
-                client_lib=component_data['clientLib'],
+                htl_code=self._clean_newlines_for_preview(component_data['htl']),
+                sling_model_code=self._clean_newlines_for_preview(component_data['slingModel']),
+                dialog_code=self._clean_newlines_for_preview(dialog_code),
+                content_xml=self._clean_newlines_for_preview(component_data['content_xml']),
+                client_lib=self._clean_newlines_for_preview(component_data['clientLib']),
                 generation_metadata={
                     'sanitized_name': sanitized_component_name
                 }
@@ -644,7 +644,7 @@ class ComponentService:
                 "component_id": generated_component.component_id,
                 "outputDirs": output_dirs,
                 "structure": self._create_folder_structure("myapp", sanitized_component_name),  # Use default
-                "aiOutput": component_data
+                "aiOutput": self._clean_newlines_for_preview(component_data)
             }
 
         except Exception as e:
@@ -720,15 +720,15 @@ class ComponentService:
                 # Old structure: dialog is a string
                 dialog_code = dialog_content
 
-            # Create new refined component
+            # Create new refined component (clean newlines for preview)
             refined_component = GeneratedComponent(
                 component_name=refined_data.get('componentName', component.component_name),
                 sling_model_name=refined_data.get('slingModelName', component.sling_model_name),
-                htl_code=refined_data['htl'],
-                sling_model_code=refined_data['slingModel'],
-                dialog_code=dialog_code,
-                content_xml=refined_data['content_xml'],
-                client_lib=refined_data['clientLib'],
+                htl_code=self._clean_newlines_for_preview(refined_data['htl']),
+                sling_model_code=self._clean_newlines_for_preview(refined_data['slingModel']),
+                dialog_code=self._clean_newlines_for_preview(dialog_code),
+                content_xml=self._clean_newlines_for_preview(refined_data['content_xml']),
+                client_lib=self._clean_newlines_for_preview(refined_data['clientLib']),
                 generation_metadata={
                     'action': 'refinement',
                     'original_component_id': component_id,
@@ -766,7 +766,7 @@ class ComponentService:
                 "component_id": refined_component.component_id,
                 "original_component_id": component_id,
                 "outputDirs": output_dirs,
-                "aiOutput": refined_data
+                "aiOutput": self._clean_newlines_for_preview(refined_data)
             }
 
         except Exception as e:
@@ -1096,15 +1096,15 @@ class ComponentService:
                 else:
                     dialog_code = dialog_content
                 
-                # Create customized component
+                # Create customized component (clean newlines for preview)
                 reused_component = GeneratedComponent(
                     component_name=customized_data.get('componentName', source_component.component_name),
                     sling_model_name=customized_data.get('slingModelName', source_component.sling_model_name),
-                    htl_code=customized_data['htl'],
-                    sling_model_code=customized_data['slingModel'],
-                    dialog_code=dialog_code,
-                    content_xml=customized_data['content_xml'],
-                    client_lib=customized_data['clientLib'],
+                    htl_code=self._clean_newlines_for_preview(customized_data['htl']),
+                    sling_model_code=self._clean_newlines_for_preview(customized_data['slingModel']),
+                    dialog_code=self._clean_newlines_for_preview(dialog_code),
+                    content_xml=self._clean_newlines_for_preview(customized_data['content_xml']),
+                    client_lib=self._clean_newlines_for_preview(customized_data['clientLib']),
                     generation_metadata={
                         'action': 'reuse_with_customization',
                         'source_component_id': source_component_id,
@@ -1116,17 +1116,17 @@ class ComponentService:
                 ai_response = f"Component '{source_component.component_name}' reused and customized successfully!"
                 
             else:
-                # Direct reuse without customization
+                # Direct reuse without customization (clean newlines for preview)
                 logger.info("Reusing component without customization...")
                 
                 reused_component = GeneratedComponent(
                     component_name=source_component.component_name,
                     sling_model_name=source_component.sling_model_name,
-                    htl_code=source_component.htl_code,
-                    sling_model_code=source_component.sling_model_code,
-                    dialog_code=source_component.dialog_code,
-                    content_xml=source_component.content_xml,
-                    client_lib=source_component.client_lib,
+                    htl_code=self._clean_newlines_for_preview(source_component.htl_code),
+                    sling_model_code=self._clean_newlines_for_preview(source_component.sling_model_code),
+                    dialog_code=self._clean_newlines_for_preview(source_component.dialog_code),
+                    content_xml=self._clean_newlines_for_preview(source_component.content_xml),
+                    client_lib=self._clean_newlines_for_preview(source_component.client_lib),
                     generation_metadata={
                         'action': 'reuse_direct',
                         'source_component_id': source_component_id,
@@ -1175,7 +1175,7 @@ class ComponentService:
                 "source_component_id": source_component_id,
                 "customized": customization_prompt is not None,
                 "outputDirs": output_dirs,
-                "aiOutput": component_data
+                "aiOutput": self._clean_newlines_for_preview(component_data)
             }
             
         except Exception as e:
@@ -1194,3 +1194,22 @@ class ComponentService:
         """Cleanup MongoDB connection when service is destroyed"""
         if hasattr(self, 'chat_storage'):
             self.chat_storage.close_connection()
+
+    def _clean_newlines_for_preview(self, component_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Convert escaped newlines (\\n) to actual newlines for proper preview display"""
+        def clean_string(text: str) -> str:
+            if isinstance(text, str):
+                return text.replace('\\n', '\n')
+            return text
+        
+        def clean_dict_recursively(data):
+            if isinstance(data, dict):
+                return {key: clean_dict_recursively(value) for key, value in data.items()}
+            elif isinstance(data, list):
+                return [clean_dict_recursively(item) for item in data]
+            elif isinstance(data, str):
+                return clean_string(data)
+            else:
+                return data
+        
+        return clean_dict_recursively(component_data)

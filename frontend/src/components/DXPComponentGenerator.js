@@ -787,16 +787,23 @@ const DXPComponentGeneratorInterface = () => {
     const codeData = component.code;
     if (!codeData) return "";
 
+    // Helper function to convert escaped newlines to actual newlines
+    const unescapeNewlines = (text) => {
+      if (typeof text !== 'string') return text;
+      return text.replace(/\\n/g, '\n');
+    };
+
     switch (section) {
       case "HTML":
-        return codeData.htl || "";
+        return unescapeNewlines(codeData.htl || "");
       case "Sling Model":
-        return codeData.slingModel || "";
+        return unescapeNewlines(codeData.slingModel || "");
       case "Dialog":
-        return codeData.dialog || "";
+        return unescapeNewlines(codeData.dialog || "");
       default:
         const clientLibSection = codeData.clientLib?.[section];
-        return clientLibSection?.fileContents?.replace("\\n", "\n") || clientLibSection || "";
+        const content = clientLibSection?.fileContents || clientLibSection || "";
+        return unescapeNewlines(content);
     }
   };
 

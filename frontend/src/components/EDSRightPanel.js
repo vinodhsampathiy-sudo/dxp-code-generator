@@ -33,13 +33,19 @@ const EDSRightPanel = ({
     console.log("🔍 EDS Code Selection - Section:", section);
     console.log("🔍 EDS Code Data:", codeData);
     
+    // Helper function to convert escaped newlines to actual newlines
+    const unescapeNewlines = (text) => {
+      if (typeof text !== 'string') return text;
+      return text.replace(/\\n/g, '\n');
+    };
+    
     switch (section) {
       case "css":
-        return codeData.css || "";
+        return unescapeNewlines(codeData.css || "");
       case "js":
-        return codeData.js || "";
+        return unescapeNewlines(codeData.js || "");
       case "mkd_table":
-        return codeData.mkd_table || "";
+        return unescapeNewlines(codeData.mkd_table || "");
       default:
         return "";
     }
