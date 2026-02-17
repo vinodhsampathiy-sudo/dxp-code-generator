@@ -8,6 +8,7 @@ from bson import ObjectId
 from fastapi import APIRouter, HTTPException, Request, File, UploadFile, Form, Query
 from pydantic import BaseModel
 from ..services.component_service import ComponentService
+from ..schemas.component_schemas import ComponentGenerationError
 from ..chatStorage.chat_model import ChatStorage
 
 logger = logging.getLogger(__name__)
@@ -383,7 +384,7 @@ async def generate_component(
         userId: Optional[str] = Form(None),
         file: Optional[UploadFile] = File(default=None)
 ):
-    """Generate a component (enhanced with session support)"""
+    """Generate a component (enhanced with session support and detailed error handling)"""
     try:
         logger.info(f"Received component generation request")
         logger.debug(f"Request data: prompt='{componentDesc}', sessionId='{sessionId}'")
@@ -416,6 +417,29 @@ async def generate_component(
             details=result.get('details')
         )
 
+    except ComponentGenerationError as e:
+        # Handle our custom validation errors with detailed context
+        logger.error(f"❌ Component generation validation error: {e}")
+        error_response = e.to_dict()
+        
+        # Create user-friendly error message
+        user_message = f"Component generation failed at {error_response['agent']}"
+        
+        # Add actionable suggestions based on error context
+        if 'suggestion' in error_response['context']:
+            user_message += f"\n\n💡 Suggestion: {error_response['context']['suggestion']}"
+        
+        if 'validation_errors' in error_response['context']:
+            user_message += f"\n\n📋 Validation Issues:\n"
+            for err in error_response['context']['validation_errors'][:3]:  # Show top 3 errors
+                user_message += f"  • {err}\n"
+        
+        return ComponentResponse(
+            success=False,
+            error=user_message,
+            details=error_response
+        )
+    
     except Exception as e:
         logger.error(f"Error in generate_component endpoint: {str(e)}", exc_info=True)
         return ComponentResponse(

@@ -16,22 +16,27 @@ class AgentState(TypedDict):
 
     Attributes:
         user_request (str): The initial request from the user.
+        image_url (str): Optional URL to design image.
+        design_analysis (dict): Optional pre-analyzed design data.
         block_details (dict): Output from Agent 1 (extracted block requirements).
         block_content_output (dict): Output from Agent 2 (JS, CSS, Markdown, HTML).
         final_output (dict): Final assembled JSON output.
     """
     user_request: str
+    image_url: str
+    design_analysis: Dict[str, Any]
     block_details: Dict[str, Any]
     block_content_output: Dict[str, Any]
     final_output: Dict[str, Any]
 
 class EDSBlockService:
-    def run_workflow(self, description):
-        pass
+    def run_workflow(self, description: str, image_url: str = None, design_analysis: dict = None):
         logger.info(f"Running EDS block generation workflow for description: {description}")
-        # Placeholder for the actual workflow logic
-        # This would typically involve calling various methods to generate the block files
-        # For now, we return a mock response
+        if image_url:
+            logger.info(f"With image: {image_url}")
+        if design_analysis:
+            logger.info(f"With design analysis: {design_analysis.get('blockType', 'N/A')}")
+        
         # --- Build the LangGraph ---
         workflow = StateGraph(AgentState)
         # Add nodes for each agent
@@ -50,6 +55,8 @@ class EDSBlockService:
         # Initial state for the graph
         initial_state = {
             "user_request": description,
+            "image_url": image_url or "",
+            "design_analysis": design_analysis or {},
             "block_details": {},
             "block_content_output": {},
             "final_output": {}
@@ -60,6 +67,6 @@ class EDSBlockService:
             # Invoke the graph
             final_state = app.invoke(initial_state)
             return final_state['final_output']
-        except Exception  as e:
+        except Exception as e:
             logger.error(f"Error generating EDS block: {str(e)}")
-            return JSONResponse(content={})
+            return {}

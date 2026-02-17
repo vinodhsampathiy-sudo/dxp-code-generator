@@ -22,6 +22,17 @@ import sys
 import anthropic
 
 from ..chatStorage.chat_model import ChatStorage, ChatSession, ChatMessage, GeneratedComponent
+from ..schemas.component_schemas import (
+    SlingModelResponse,
+    HTLResponse,
+    DialogResponse,
+    ClientLibResponse,
+    ImageAnalysisResponse,
+    ComponentGenerationResponse,
+    ComponentGenerationError
+)
+from ..validators.code_validators import validate_component_code
+from pydantic import ValidationError
 
 # Import our new storage models
 
@@ -399,12 +410,35 @@ class ComponentService:
         prompt = f"""USER REQUIREMENT: {user_prompt}
         Analyze this UI and generate the code."""
 
-        logger.info("Sending image bytes to llm")
-        response = await self.call_llm(prompt, system_prompt, image, chat_history)
-        logger.debug("in image_agent_generate_html calling extract html method")
-        response = self.extract_and_format_response(response, require_html_code=True)
-        logger.debug(f"in image_agent_generate_html fetching response :: {response}")
-        return response['data'] if 'data' in response else response
+        try:
+            logger.info("Sending image bytes to llm")
+            response = await self.call_llm(prompt, system_prompt, image, chat_history)
+            logger.debug("in image_agent_generate_html calling extract html method")
+            response = self.extract_and_format_response(response, require_html_code=True)
+            
+            # Validate response with Pydantic schema
+            data = response['data'] if 'data' in response else response
+            validated_response = ImageAnalysisResponse(**data)
+            logger.debug(f"✅ Image analysis response validated successfully")
+            return validated_response.model_dump()
+        except ValidationError as e:
+            logger.error(f"❌ Image analysis validation failed: {e}")
+            raise ComponentGenerationError(
+                agent="Image Analysis Agent",
+                error="Generated HTML/CSS failed validation",
+                context={
+                    "validation_errors": e.errors(),
+                    "user_prompt": user_prompt,
+                    "response_preview": str(response)[:500] if response else None
+                }
+            )
+        except Exception as e:
+            logger.error(f"❌ Image analysis failed: {e}")
+            raise ComponentGenerationError(
+                agent="Image Analysis Agent",
+                error=str(e),
+                context={"user_prompt": user_prompt}
+            )
 
     async def text_agent_generate_html(self, user_prompt: str, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
         """Generate HTML/CSS from text requirements when no image is provided."""
@@ -428,11 +462,40 @@ class ComponentService:
         prompt = f"""USER REQUIREMENT: {user_prompt}
         Generate the complete analysis and Sling Model as specified."""
 
-        response = await self.call_llm(prompt, system_prompt, None, chat_history)
-        logger.debug(f"in agent1_requirements_and_sling_model fetching response :: {response}")
-        response = self.extract_and_format_response(response, require_html_code=False)
-        logger.debug(f"in agent1_requirements_and_sling_model fetching response after extraction :: {response}")
-        return response['data'] if 'data' in response else response
+        try:
+            response = await self.call_llm(prompt, system_prompt, None, chat_history)
+            logger.debug(f"in agent1_requirements_and_sling_model fetching response :: {response}")
+            response = self.extract_and_format_response(response, require_html_code=False)
+            
+            # Validate response with Pydantic schema
+            data = response['data'] if 'data' in response else response
+            validated_response = SlingModelResponse(**data)
+            logger.info(f"✅ Agent 1: Sling Model validated - {validated_response.sharedContext.componentName}")
+            return validated_response.model_dump()
+        except ValidationError as e:
+            logger.error(f"❌ Agent 1 validation failed: {e}")
+            # Extract specific validation errors for better debugging
+            error_details = []
+            for error in e.errors():
+                error_details.append(f"{error['loc']}: {error['msg']}")
+            
+            raise ComponentGenerationError(
+                agent="Agent 1 (Requirements & Sling Model)",
+                error="Sling Model validation failed",
+                context={
+                    "validation_errors": error_details,
+                    "user_prompt": user_prompt,
+                    "response_preview": str(response)[:500] if response else None,
+                    "suggestion": "The AI may have missed required imports or used deprecated patterns. Try simplifying your request."
+                }
+            )
+        except Exception as e:
+            logger.error(f"❌ Agent 1 failed: {e}")
+            raise ComponentGenerationError(
+                agent="Agent 1 (Requirements & Sling Model)",
+                error=str(e),
+                context={"user_prompt": user_prompt}
+            )
 
     async def agent2_htl_generator(self, shared_context: Dict[str, Any], sling_model: str, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
         prompt_file = Path(__file__).parent.parent / "prompts" / "aem" /  "agent_2.txt"
@@ -444,9 +507,26 @@ class ComponentService:
         Generate the complete HTL template as specified.
         Given an AI agent has analyzed the design and provided the html and css code, generate the HTL template for the AEM component."""
 
-        response = await self.call_llm(prompt, system_prompt, None, chat_history)
-        response = self.extract_and_format_response(response, require_html_code=False)
-        return response['data'] if 'data' in response else response
+        try:
+            response = await self.call_llm(prompt, system_prompt, None, chat_history)
+            response = self.extract_and_format_response(response, require_html_code=False)
+            
+            # Validate response with Pydantic schema
+            data = response['data'] if 'data' in response else response
+            validated_response = HTLResponse(**data)
+            logger.info(f"✅ Agent 2: HTL template validated")
+            return validated_response.model_dump()
+        except ValidationError as e:
+            logger.error(f"❌ Agent 2 validation failed: {e}")
+            raise ComponentGenerationError(
+                agent="Agent 2 (HTL Generator)",
+                error="HTL template validation failed",
+                context={
+                    "validation_errors": [f"{err['loc']}: {err['msg']}" for err in e.errors()],
+                    "component_name": shared_context.get('componentName', 'unknown'),
+                    "suggestion": "The HTL template may be missing data-sly-use directive or proper HTML structure."
+                }
+            )
 
     async def agent3_dialog_generator(self, shared_context: Dict[str, Any], sling_model: str, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
         prompt_file = Path(__file__).parent.parent / "prompts" / "aem" / "agent_3.txt"
@@ -457,9 +537,26 @@ class ComponentService:
         SLING MODEL REFERENCE: {sling_model}
         Generate the complete dialog configuration as specified."""
 
-        response = await self.call_llm(prompt, system_prompt, None, chat_history)
-        response = self.extract_and_format_response(response, require_html_code=False)
-        return response['data'] if 'data' in response else response
+        try:
+            response = await self.call_llm(prompt, system_prompt, None, chat_history)
+            response = self.extract_and_format_response(response, require_html_code=False)
+            
+            # Validate response with Pydantic schema
+            data = response['data'] if 'data' in response else response
+            validated_response = DialogResponse(**data)
+            logger.info(f"✅ Agent 3: Dialog XML validated")
+            return validated_response.model_dump(by_alias=True)
+        except ValidationError as e:
+            logger.error(f"❌ Agent 3 validation failed: {e}")
+            raise ComponentGenerationError(
+                agent="Agent 3 (Dialog Generator)",
+                error="Dialog XML validation failed",
+                context={
+                    "validation_errors": [f"{err['loc']}: {err['msg']}" for err in e.errors()],
+                    "component_name": shared_context.get('componentName', 'unknown'),
+                    "suggestion": "The dialog XML may be missing required elements like jcr:root or XML declaration."
+                }
+            )
 
     async def agent4_client_lib_generator(self, shared_context: Dict[str, Any], htl: str, chat_history: Optional[List[ChatMessage]] = None) -> Dict[str, Any]:
         prompt_file = Path(__file__).parent.parent / "prompts" / "aem" / "agent_4.txt"
@@ -470,9 +567,26 @@ class ComponentService:
         HTL REFERENCE: {htl}
         Generate the complete client library structure as specified."""
 
-        response = await self.call_llm(prompt, system_prompt, None, chat_history)
-        response = self.extract_and_format_response(response, require_html_code=False)
-        return response['data'] if 'data' in response else response
+        try:
+            response = await self.call_llm(prompt, system_prompt, None, chat_history)
+            response = self.extract_and_format_response(response, require_html_code=False)
+            
+            # Validate response with Pydantic schema
+            data = response['data'] if 'data' in response else response
+            validated_response = ClientLibResponse(**data)
+            logger.info(f"✅ Agent 4: Client library validated")
+            return validated_response.model_dump()
+        except ValidationError as e:
+            logger.error(f"❌ Agent 4 validation failed: {e}")
+            raise ComponentGenerationError(
+                agent="Agent 4 (ClientLib Generator)",
+                error="Client library validation failed",
+                context={
+                    "validation_errors": [f"{err['loc']}: {err['msg']}" for err in e.errors()],
+                    "component_name": shared_context.get('componentName', 'unknown'),
+                    "suggestion": "The client library may be missing required files (css.txt, js.txt) or actual CSS/JS files."
+                }
+            )
 
     async def generate_aem_component(self, user_prompt: str, image, session_id: Optional[str] = None) -> Dict[str, Any]:
         """Main orchestrator method with chat history support"""
@@ -543,6 +657,21 @@ class ComponentService:
                 'slingModelName': shared_content['slingModelName'],
                 'componentName': shared_content['componentName']
             }
+
+            # Validate generated code
+            logger.info('Validating generated component code...')
+            validation_results = validate_component_code(final_result)
+            
+            # Log validation results
+            if not validation_results['is_valid']:
+                logger.warning(f"\u26a0\ufe0f Component validation found errors:")
+                for component_type, result in validation_results.items():
+                    if component_type != 'is_valid' and isinstance(result, dict):
+                        if result.get('errors'):
+                            logger.warning(f"  {component_type}: {result['errors']}")
+            
+            # Add validation results to final output
+            final_result['validation'] = validation_results
 
             logger.info('AEM Component Generation completed successfully!')
             return final_result

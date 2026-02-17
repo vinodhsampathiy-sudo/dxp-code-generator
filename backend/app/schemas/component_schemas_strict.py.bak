@@ -1,0 +1,282 @@
+"""
+Pydantic schemas for validating component generation responses
+"""
+from typing import Dict, List, Optional, Any
+from pydantic import BaseModel, Field, validator, field_validator
+import re
+
+
+class DesignAnalysis(BaseModel):
+    """Design analysis extracted from image"""
+    colorPalette: Optional[Dict[str, str]] = Field(default_factory=dict)
+    typography: Optional[Dict[str, str]] = Field(default_factory=dict)
+    spacing: Optional[Dict[str, str]] = Field(default_factory=dict)
+    layoutPattern: Optional[str] = None
+    interactiveElements: Optional[List[str]] = Field(default_factory=list)
+    themeVariants: Optional[List[str]] = Field(default_factory=list)
+    responsiveBreakpoints: Optional[List[str]] = Field(default_factory=list)
+
+
+class ImageAnalysisResponse(BaseModel):
+    """Response from image-to-code agent"""
+    htmlCode: str = Field(..., min_length=20, description="Generated HTML code")
+    cssCode: str = Field(..., min_length=20, description="Generated CSS code")
+    designAnalysis: Optional[DesignAnalysis] = None
+    
+    @field_validator('htmlCode')
+    @classmethod
+    def validate_html(cls, v: str) -> str:
+        """Validate HTML has basic structure"""
+        if not v.strip():
+            raise ValueError("HTML code cannot be empty")
+        # Check for basic HTML elements
+        if not any(tag in v.lower() for tag in ['<div', '<section', '<article', '<header']):
+            raise ValueError("HTML must contain at least one structural element")
+        return v
+    
+    @field_validator('cssCode')
+    @classmethod
+    def validate_css(cls, v: str) -> str:
+        """Validate CSS has basic rules"""
+        if not v.strip():
+            raise ValueError("CSS code cannot be empty")
+        # Check for at least one CSS rule
+        if '{' not in v or '}' not in v:
+            raise ValueError("CSS must contain at least one rule")
+        return v
+
+
+class SharedContext(BaseModel):
+    """Shared context object from Agent 1"""
+    requirement: str = Field(..., min_length=10)
+    componentName: str = Field(..., min_length=2)
+    componentType: str = Field(..., min_length=2)
+    properties: List[str] = Field(default_factory=list)
+    complexity: str
+    dependencies: List[str] = Field(default_factory=list)
+    designPatterns: List[str] = Field(default_factory=list)
+    accessibility: List[str] = Field(default_factory=list)
+    responsive: bool = True
+    interactions: List[str] = Field(default_factory=list)
+    validation: List[str] = Field(default_factory=list)
+    seoRequirements: List[str] = Field(default_factory=list)
+    slingModelName: str = Field(..., min_length=2)
+    
+    @field_validator('componentName')
+    @classmethod
+    def validate_component_name(cls, v: str) -> str:
+        """Validate component name follows conventions"""
+        # Auto-convert names with spaces to PascalCase
+        if ' ' in v:
+            # Convert "Promo Hero Banner" to "PromoHeroBanner"
+            v = ''.join(word.capitalize() for word in v.split())
+        
+        # Should be kebab-case, camelCase, or PascalCase
+        is_kebab_case = re.match(r'^[a-z][a-z0-9-]*$', v)
+        is_camel_case = re.match(r'^[a-z][a-zA-Z0-9]*$', v)
+        is_pascal_case = re.match(r'^[A-Z][a-zA-Z0-9]*$', v)
+        
+        if not (is_kebab_case or is_camel_case or is_pascal_case):
+            raise ValueError("Component name must be in kebab-case, camelCase, or PascalCase")
+        return v
+    
+    @field_validator('slingModelName')
+    @classmethod
+    def validate_sling_model_name(cls, v: str) -> str:
+        """Validate Sling Model name follows Java class naming"""
+        if not re.match(r'^[A-Z][a-zA-Z0-9]*Model$', v):
+            raise ValueError("Sling Model name must be PascalCase and end with 'Model'")
+        return v
+
+
+class SlingModelResponse(BaseModel):
+    """Response from Agent 1 - Requirements and Sling Model"""
+    sharedContext: SharedContext
+    slingModel: str = Field(..., min_length=100, description="Complete Sling Model Java code")
+    
+    @field_validator('slingModel')
+    @classmethod
+    def validate_sling_model(cls, v: str) -> str:
+        """Validate Sling Model has required imports and structure"""
+        required_imports = [
+            'org.apache.sling.models.annotations.Model',
+            'org.apache.sling.models.annotations.DefaultInjectionStrategy'
+        ]
+        
+        for imp in required_imports:
+            if imp not in v:
+                raise ValueError(f"Missing required import: {imp}")
+        
+        # Check for package declaration (relaxed to accept any com.adobe.aem package)
+        if not re.search(r'package\s+com\.adobe\.aem\.[\w.]+;', v):
+            raise ValueError("Package must start with 'com.adobe.aem' (e.g., com.adobe.aem.guides.wknd.core.models)")
+        
+        # Check for @Model annotation
+        if '@Model(' not in v:
+            raise ValueError("Missing @Model annotation")
+        
+        # Check for class declaration
+        if not re.search(r'public class \w+', v):
+            raise ValueError("Missing public class declaration")
+        
+        # Validate no deprecated imports
+        deprecated_imports = [
+            'org.apache.sling.models.annotations.Optional'
+        ]
+        for dep_imp in deprecated_imports:
+            if dep_imp in v:
+                raise ValueError(f"Using deprecated import: {dep_imp}. Use defaultInjectionStrategy instead")
+        
+        return v
+
+
+class HTLResponse(BaseModel):
+    """Response from Agent 2 - HTL Template"""
+    htl: str = Field(..., min_length=50, description="Complete HTL template code")
+    
+    @field_validator('htl')
+    @classmethod
+    def validate_htl(cls, v: str) -> str:
+        """Validate HTL has required directives"""
+        if 'data-sly-use' not in v:
+            raise ValueError("HTL must include data-sly-use directive to bind Sling Model")
+        
+        # Check for proper HTML structure
+        if not any(tag in v.lower() for tag in ['<div', '<section', '<article']):
+            raise ValueError("HTL must contain structural HTML elements")
+        
+        return v
+
+
+class DialogResponse(BaseModel):
+    """Response from Agent 3 - Dialog XML"""
+    dialog: str = Field(..., min_length=100, description="Complete dialog XML")
+    content_xml: str = Field(..., alias='.content.xml', min_length=50, description="Component content.xml")
+    
+    @field_validator('dialog', mode='before')
+    @classmethod
+    def extract_dialog(cls, v):
+        """Extract dialog XML from dict if needed"""
+        if isinstance(v, dict):
+            # AI returned dialog as dict like {"_cq_dialog/.content.xml": "..."}
+            # Extract the first XML value
+            for key, value in v.items():
+                if isinstance(value, str) and '<?xml' in value:
+                    return value
+            # If no XML found, try to get any string value
+            return next((val for val in v.values() if isinstance(val, str)), str(v))
+        return v
+    
+    @field_validator('dialog')
+    @classmethod
+    def validate_dialog(cls, v: str) -> str:
+        """Validate dialog XML structure"""
+        if '<?xml version="1.0" encoding="UTF-8"?>' not in v:
+            raise ValueError("Dialog XML must include XML declaration")
+        
+        if 'jcr:root' not in v:
+            raise ValueError("Dialog XML must include jcr:root element")
+        
+        if 'sling:resourceType="cq/gui/components/authoring/dialog"' not in v:
+            raise ValueError("Dialog must have correct resourceType")
+        
+        return v
+    
+    @field_validator('content_xml', mode='before')
+    @classmethod
+    def extract_content_xml(cls, v):
+        """Extract content.xml from dict if needed"""
+        if isinstance(v, dict):
+            # Extract the first XML value
+            for key, value in v.items():
+                if isinstance(value, str) and '<?xml' in value:
+                    return value
+            return next((val for val in v.values() if isinstance(val, str)), str(v))
+        return v
+    
+    @field_validator('content_xml')
+    @classmethod
+    def validate_content_xml(cls, v: str) -> str:
+        """Validate content.xml structure"""
+        if '<?xml version="1.0" encoding="UTF-8"?>' not in v:
+            raise ValueError("Content XML must include XML declaration")
+        
+        if 'jcr:root' not in v:
+            raise ValueError("Content XML must include jcr:root element")
+        
+        return v
+
+
+class ClientLibResponse(BaseModel):
+    """Response from Agent 4 - Client Library"""
+    clientLib: Dict[str, Any] = Field(..., description="Client library structure with CSS/JS files")
+    
+    @field_validator('clientLib')
+    @classmethod
+    def validate_client_lib(cls, v: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate client library structure"""
+        required_files = ['css.txt', 'js.txt']
+        
+        for file in required_files:
+            if file not in v:
+                raise ValueError(f"Client library missing required file: {file}")
+        
+        # Check for actual CSS and JS files
+        has_css = any('css' in key.lower() and key != 'css.txt' for key in v.keys())
+        has_js = any('js' in key.lower() and key != 'js.txt' for key in v.keys())
+        
+        if not has_css:
+            raise ValueError("Client library must include at least one CSS file")
+        
+        if not has_js:
+            raise ValueError("Client library must include at least one JS file")
+        
+        return v
+
+
+class ComponentGenerationResponse(BaseModel):
+    """Complete component generation response"""
+    htl: str
+    slingModel: str
+    dialog: str
+    content_xml: str
+    clientLib: Dict[str, Any]
+    slingModelName: str
+    componentName: str
+    validation: Optional[Dict[str, Any]] = None
+    
+    @field_validator('componentName')
+    @classmethod
+    def validate_component_name(cls, v: str) -> str:
+        """Validate component name"""
+        if not v or len(v) < 2:
+            raise ValueError("Component name must be at least 2 characters")
+        return v
+    
+    @field_validator('slingModelName')
+    @classmethod
+    def validate_sling_model_name(cls, v: str) -> str:
+        """Validate Sling Model name"""
+        if not v or len(v) < 2:
+            raise ValueError("Sling Model name must be at least 2 characters")
+        if not v.endswith('Model'):
+            raise ValueError("Sling Model name should end with 'Model'")
+        return v
+
+
+class ComponentGenerationError(Exception):
+    """Custom exception for component generation errors"""
+    def __init__(self, agent: str, error: str, context: Dict[str, Any]):
+        self.agent = agent
+        self.error = error
+        self.context = context
+        super().__init__(f"[{agent}] {error}")
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert error to dictionary for API response"""
+        return {
+            "agent": self.agent,
+            "error": self.error,
+            "context": self.context,
+            "error_type": "component_generation_error"
+        }

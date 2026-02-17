@@ -29,14 +29,16 @@ JavaScript (`{{block_name}}.js`) Requirements
 
 Behavior Tips:
 - If description mentions carousel, tabs, quotes, etc., implement logic accordingly (e.g., scrollable layout, hidden/showing tabs, etc.)
+- Support keyboard navigation (Tab, Enter, Escape, Arrow keys as appropriate)
+- Add proper ARIA attributes for accessibility
 
 CSS Styling (`{{block_name}}.css`) Requirements
-- Add fixed height and width for proper display.  
-   - Avoid adding styles in the JavaScript file.
+- **Mobile-First Approach**: Base styles for mobile, use @media queries for larger screens
 - Add fixed height and width for proper display.  
    - Avoid adding styles in the JavaScript file.   
 - Styles must visually represent the purpose described in `functionalityDescription`
 - Ensure all style variants maintain accessibility and responsiveness
+- **All selectors must be scoped to the block**: `.{{block_name}} .selector`
 
 Multiple Style Variants:
 - Support alternative visual styles via `blockStyle` (e.g., `compact`, `minimal`, `expanded`)
@@ -44,11 +46,157 @@ Multiple Style Variants:
 
 Ensure CSS remains modular and scalable for future variants.
 
-Responsive Behavior:
-- Columns stack vertically on mobile (@media (max-width: 600px))
+Responsive Behavior (Mobile-First):
+- Base styles: Mobile (0px+)
+- Tablet: @media (min-width: 600px)
+- Desktop: @media (min-width: 900px)
+- Large Desktop: @media (min-width: 1200px)
+
+**CSS Breakpoint Example:**
+```css
+.{{block_name}} {
+  /* Mobile base styles */
+  padding: 16px;
+  font-size: 14px;
+}
+
+@media (min-width: 600px) {
+  .{{block_name}} {
+    /* Tablet */
+    padding: 24px;
+    font-size: 16px;
+  }
+}
+
+@media (min-width: 900px) {
+  .{{block_name}} {
+    /* Desktop */
+    padding: 32px;
+    font-size: 18px;
+  }
+}
+
+@media (min-width: 1200px) {
+  .{{block_name}} {
+    /* Large desktop */
+    padding: 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+  }
+}
+```
 
 Edge Delivery Compliance:  
   - Ensure the block adheres to Edge Delivery Services' standards for functionality and styling.
+
+---
+## Accessibility Patterns
+
+### ARIA Attributes by Block Type
+
+**Accordion:**
+```javascript
+button.setAttribute('aria-expanded', 'false');
+button.setAttribute('aria-controls', panelId);
+button.setAttribute('id', buttonId);
+panel.setAttribute('role', 'region');
+panel.setAttribute('aria-labelledby', buttonId);
+panel.setAttribute('aria-hidden', 'true');
+```
+
+**Tabs:**
+```javascript
+tablist.setAttribute('role', 'tablist');
+button.setAttribute('role', 'tab');
+button.setAttribute('aria-selected', 'false');
+button.setAttribute('aria-controls', panelId);
+button.setAttribute('id', tabId);
+panel.setAttribute('role', 'tabpanel');
+panel.setAttribute('aria-labelledby', tabId);
+panel.setAttribute('aria-hidden', 'true');
+```
+
+**Carousel:**
+```javascript
+carousel.setAttribute('role', 'region');
+carousel.setAttribute('aria-label', 'Image carousel');
+carousel.setAttribute('aria-roledescription', 'carousel');
+slide.setAttribute('role', 'group');
+slide.setAttribute('aria-roledescription', 'slide');
+slide.setAttribute('aria-label', `Slide ${index + 1} of ${total}`);
+```
+
+**Modal/Dialog:**
+```javascript
+dialog.setAttribute('role', 'dialog');
+dialog.setAttribute('aria-modal', 'true');
+dialog.setAttribute('aria-labelledby', titleId);
+dialog.setAttribute('aria-describedby', descId);
+```
+
+---
+## Keyboard Navigation Patterns
+
+### Standard Interactions
+```javascript
+// Enter and Space for button activation
+button.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault();
+    button.click();
+  }
+});
+
+// Escape to close
+element.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeFunction();
+  }
+});
+```
+
+### Arrow Key Navigation (Tabs, Carousel)
+```javascript
+// Horizontal arrow navigation
+element.addEventListener('keydown', (e) => {
+  const items = [...element.querySelectorAll('[role="tab"]')];
+  const currentIndex = items.indexOf(document.activeElement);
+  
+  if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    const nextIndex = (currentIndex + 1) % items.length;
+    items[nextIndex].focus();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    const prevIndex = (currentIndex - 1 + items.length) % items.length;
+    items[prevIndex].focus();
+  }
+});
+```
+
+### Focus Management
+```javascript
+// Trap focus in modal
+const focusableElements = dialog.querySelectorAll(
+  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+);
+const firstElement = focusableElements[0];
+const lastElement = focusableElements[focusableElements.length - 1];
+
+dialog.addEventListener('keydown', (e) => {
+  if (e.key === 'Tab') {
+    if (e.shiftKey && document.activeElement === firstElement) {
+      e.preventDefault();
+      lastElement.focus();
+    } else if (!e.shiftKey && document.activeElement === lastElement) {
+      e.preventDefault();
+      firstElement.focus();
+    }
+  }
+});
+```
+
+---
 
 **Authoring Guide (`markdownTable`):**
 - Provide a clear Markdown table explaining how a content author should structure the block in a Google Doc or Word document.
@@ -59,6 +207,7 @@ Hard Constraints
 - Infer structure, logic, and visuals from the description – do not assume semantic tags
 - Final output must be a complete and valid JSON object
 - If functionality is unclear or ambiguous, return: "I can't help with that"
+- **IMPORTANT**: For interactive blocks (accordion, tabs, carousel, modal), include appropriate ARIA attributes and keyboard navigation
 
 **sample assistant output**
 {

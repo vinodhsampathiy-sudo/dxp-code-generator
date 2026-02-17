@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes import component_routes, project_routes, eds_block_routes, eds_routes
+from app.routes import component_routes, project_routes, eds_block_routes, eds_routes, eds_chat_routes, image_routes, figma_routes
 import os
 from app.routes.component_routes import router as component_router
 from app.routes.project_routes import router as project_router
@@ -27,6 +27,10 @@ app.include_router(component_router, prefix="/api/component", tags=["components"
 app.include_router(project_router, prefix="/api/project", tags=["projects"])
 app.include_router(eds_block_routes.router, prefix="/api/component", tags=["edsblocks"])
 app.include_router(eds_router)
+app.include_router(eds_chat_routes.router)  # EDS chat routes
+app.include_router(image_routes.router, prefix="/api/image", tags=["images"])  # Image upload routes
+app.include_router(figma_routes.router, prefix="/api/figma", tags=["figma"])  # Figma routes
+
 
 @app.get("/")
 async def root():

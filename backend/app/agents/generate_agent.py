@@ -13,6 +13,8 @@ logger = HelperUtils.setup_logger("generate_agent")
 
 class AgentState(TypedDict):
     user_request: str
+    image_url: str
+    design_analysis: Dict[str, Any]
     block_details: Dict[str, Any]
     block_content_output: Dict[str, Any]
     final_output: Dict[str, Any]
@@ -20,40 +22,64 @@ class AgentState(TypedDict):
 def generate_content_node(state: AgentState) -> AgentState:
     """
     Agent 2: Generates CSS, JS, markdown table, and input HTML for the block.
+    Uses design analysis data if available to generate pixel-perfect CSS.
     """
     block_details = state['block_details']
     if not block_details:
         raise ValueError("Block details are missing in the state")
 
     aem_methods_formatted = "\n".join([f"- {m['name']}" for m in AEM_EXPORTED_METHODS])
-    #logger.info(f"Generating content for block: {block_details.get('blockName', 'unknown')} with style {block_details.get('blockStyle', 'default')}")
     block_type = block_details.get("blockType", "custom")
-    prompt = HelperUtils.build_eds_prompt("generate_agent_prompt.txt",{
+    
+    # Build base prompt
+    prompt_vars = {
         "block_name": block_details.get("blockName", "unknown"),
         "block_type": block_type,
         "block_style": block_details.get("blockStyle", "default"),
         "functionality_description": block_details.get("functionalityDescription", ""),
         "aem_methods": aem_methods_formatted
-    })
-    #logger.info(f"Generated prompt for content generation: {prompt}")
+    }
+    
+    prompt = HelperUtils.build_eds_prompt("generate_agent_prompt.txt", prompt_vars)
+    
+    # Add design analysis data if available
+    design_context = ""
+    if state.get('design_analysis') and state['design_analysis']:
+        design_data = state['design_analysis']
+        logger.info("Using design analysis data in generate agent for accurate styling")
+        
+        design_context = "\n\n**Design Tokens from Visual Analysis:**\n"
+        
+        # Add color palette
+        if design_data.get('colorPalette'):
+            design_context += "\n**Colors:**\n"
+            for color_name, color_value in design_data['colorPalette'].items():
+                design_context += f"- {color_name}: {color_value}\n"
+        
+        # Add typography
+        if design_data.get('typography'):
+            design_context += "\n**Typography:**\n"
+            for typo_name, typo_value in design_data['typography'].items():
+                design_context += f"- {typo_name}: {typo_value}\n"
+        
+        # Add spacing
+        if design_data.get('spacing'):
+            design_context += "\n**Spacing:**\n"
+            for spacing_name, spacing_value in design_data['spacing'].items():
+                design_context += f"- {spacing_name}: {spacing_value}\n"
+        
+        # Add layout pattern
+        if design_data.get('layoutPattern'):
+            design_context += f"\n**Layout Pattern:** {design_data['layoutPattern']}\n"
+        
+        design_context += "\n**IMPORTANT:** Use these exact design tokens in your CSS. Match colors, fonts, and spacing precisely."
+    
     user_prompt = [
         ChatCompletionSystemMessageParam(role="system", content=SYSTEM_PROMPT_GENERATE_AGENT),
-        ChatCompletionUserMessageParam(role="user", content=prompt),
+        ChatCompletionUserMessageParam(role="user", content=prompt + design_context),
         ChatCompletionUserMessageParam(role="user", content=f"**Block Details**\n{json.dumps(block_details, indent=2)}")
     ]
 
-    """
-    if block_type != "custom":
-        url = f"{AEM_BLOCK_COLLECTION_URL}/blocks/{block_type}/{block_type}.js"
-        sample_block_code = HelperUtils.fetch_content_from_url(url)
-        if sample_block_code:
-            logger.info(f"Using sample block code for type '{block_type}'")
-            user_prompt.append(ChatCompletionUserMessageParam(role="user", content=f"**Relevant Block code**\n{sample_block_code}"))
-        else:
-            logger.warning(f"No sample block code found for type '{block_type}', proceeding without it")
-    else:
-        logger.info("No sample block code provided, proceeding with custom block generation")
-    """
     logger.info(f"User prompt for content generation: {user_prompt}")
     
     # Call OpenAI API to extract block details

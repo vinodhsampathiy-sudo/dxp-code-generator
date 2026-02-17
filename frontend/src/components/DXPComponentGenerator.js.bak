@@ -353,16 +353,6 @@ const DXPComponentGeneratorInterface = () => {
           }
         }));
 
-        console.log("🔍 DETAILED COMPONENT STRUCTURE CHECK:");
-        formattedComponents.forEach((comp, index) => {
-          console.log(`Component ${index + 1}: ${comp.name}`);
-          console.log("  - code object keys:", Object.keys(comp.code || {}));
-          console.log("  - clientLib exists:", !!comp.code?.clientLib);
-          console.log("  - clientLib keys:", comp.code?.clientLib ? Object.keys(comp.code.clientLib) : "N/A");
-          console.log("  - clientLib.css length:", comp.code?.clientLib?.css?.length || 0);
-          console.log("  - clientLib.js length:", comp.code?.clientLib?.js?.length || 0);
-        });
-
         // Set the state with both messages and components
         console.log("🔄 Setting messages state with", formattedMessages.length, "messages");
         setMessages(formattedMessages);
@@ -408,7 +398,7 @@ const DXPComponentGeneratorInterface = () => {
       } else {
         // AEM endpoints use API_BASE_URL
         response = await axios.post(`${API_BASE_URL}/chat/sessions`, {
-          session_title: sessionTitle || `New Chat - ${new Date().toLocaleDateString()}`,
+          session_title: sessionTitle || `New Chat - ${new Date().toLocaleDateString()}`, \n          user_id: "default_user",
           model_provider: "openai"
         });
       }
@@ -437,18 +427,14 @@ const DXPComponentGeneratorInterface = () => {
   const deleteSession = async (sessionId, event) => {
     event.stopPropagation(); // Prevent session selection when deleting
     try {
-      let response;
-      if (selectedCMS === "Adobe EDS") {
-        // EDS endpoints use full path from baseUrl
-        const endpoint = typeof apiConfig.endpoints.edsDeleteSession === 'function'
+      // Use different endpoints based on selected CMS
+      const endpoint = selectedCMS === "Adobe EDS"
+        ? (typeof apiConfig.endpoints.edsDeleteSession === 'function'
           ? apiConfig.endpoints.edsDeleteSession(sessionId)
-          : apiConfig.endpoints.edsDeleteSession.replace('{session_id}', sessionId);
-        response = await axios.delete(`${apiConfig.baseUrl}${endpoint}`);
-      } else {
-        // AEM endpoints use API_BASE_URL
-        response = await axios.delete(`${API_BASE_URL}/chat/sessions/${sessionId}`);
-      }
+          : apiConfig.endpoints.edsDeleteSession.replace('{session_id}', sessionId))
+        : `/chat/sessions/${sessionId}`;
 
+      const response = await axios.delete(`${API_BASE_URL}${endpoint}`);
       if (response.data.success) {
         if (currentSessionId === sessionId) {
           setCurrentSessionId(null);
@@ -470,15 +456,12 @@ const DXPComponentGeneratorInterface = () => {
     }
 
     try {
-      let response;
-      if (selectedCMS === "Adobe EDS") {
-        // EDS endpoints use full path from baseUrl
-        response = await axios.get(`${apiConfig.baseUrl}${apiConfig.endpoints.edsSearchSessions}?q=${encodeURIComponent(searchTerm)}`);
-      } else {
-        // AEM endpoints use API_BASE_URL
-        response = await axios.get(`${API_BASE_URL}/chat/sessions/search?q=${encodeURIComponent(searchTerm)}`);
-      }
+      // Use different endpoints based on selected CMS
+      const endpoint = selectedCMS === "Adobe EDS"
+        ? apiConfig.endpoints.edsSearchSessions
+        : '/chat/sessions/search';
 
+      const response = await axios.get(`${API_BASE_URL}${endpoint}?q=${encodeURIComponent(searchTerm)}`);
       if (response.data.success) {
         setChatSessions(response.data.sessions);
       }
@@ -555,8 +538,8 @@ const DXPComponentGeneratorInterface = () => {
 
   const handleDownload = () => {
     downloadZipFromBase64(
-      selectedComponent?.code?.clientLib?.zip_base64,
-      selectedComponent?.code?.clientLib?.file_name
+      selectedComponent?.code?.zip_base64,
+      selectedComponent?.code?.file_name
     );
   };
 
@@ -726,32 +709,12 @@ const DXPComponentGeneratorInterface = () => {
     }
 
     try {
-      let response;
+      console.log("📡 Making POST request to:", `${API_BASE_URL}/generate`);
+      console.log("🔗 Full URL:", `${API_BASE_URL}/generate`);
 
-      if (selectedCMS === "Adobe EDS") {
-        // EDS block generation endpoint
-        const edsEndpoint = `${API_BASE_URL}/generate-eds-block`;
-        console.log("📡 Making POST request to EDS endpoint:", edsEndpoint);
-
-        // For EDS, send as JSON instead of FormData
-        const edsData = {
-          description: inputMessage,
-          sessionId: sessionId,
-          userId: "default_user"
-        };
-
-        response = await axios.post(edsEndpoint, edsData, {
-          headers: { "Content-Type": "application/json" },
-        });
-      } else {
-        // AEM component generation endpoint
-        console.log("📡 Making POST request to:", `${API_BASE_URL}/generate`);
-        console.log("🔗 Full URL:", `${API_BASE_URL}/generate`);
-
-        response = await axios.post(`${API_BASE_URL}/generate`, formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
-      }
+      const response = await axios.post(`${API_BASE_URL}/generate`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
 
       console.log("📨 Generate response received:", response.data);
 
@@ -858,30 +821,13 @@ const DXPComponentGeneratorInterface = () => {
   };
 
   const getCodeForEdsSelection = (section, component) => {
-    console.log("🔍 getCodeForEdsSelection called with:", { section, componentName: component?.name });
+    if (!component) return "";
 
-    if (!component) {
-      console.warn("⚠️ No component provided to getCodeForEdsSelection");
-      return "";
-    }
-
-    console.log("🔍 Component structure:", {
-      hasCode: !!component.code,
-      codeKeys: component.code ? Object.keys(component.code) : [],
-      hasClientLib: !!component.code?.clientLib,
-      clientLibKeys: component.code?.clientLib ? Object.keys(component.code.clientLib) : []
-    });
-
-    const codeData = component.code?.clientLib;
-    if (!codeData) {
-      console.warn("⚠️ No clientLib data found in component:", component);
-      console.warn("⚠️ Component.code structure:", component.code);
-      return "";
-    }
+    const codeData = component.code;
+    if (!codeData) return "";
 
     console.log("🔍 EDS Code Selection - Section:", section);
-    console.log("🔍 EDS clientLib Data keys:", Object.keys(codeData));
-    console.log("🔍 Requested section value length:", codeData[section]?.length || 0);
+    console.log("🔍 EDS Code Data:", codeData);
 
     switch (section) {
       case "css":

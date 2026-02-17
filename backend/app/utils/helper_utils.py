@@ -156,7 +156,9 @@ class HelperUtils:
         try:
             json_data = json.loads(json_str)
         except json.JSONDecodeError as e:
-            logger.info("Failed to parse JSON:", e)
+            logger.error(f"Failed to parse JSON: {e}")
+            logger.error(f"Response text (first 500 chars): {response_txt[:500]}")
+            logger.error(f"Cleaned JSON string (first 500 chars): {json_str[:500]}")
             return {}
 
         if isinstance(json_data, list):

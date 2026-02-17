@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import ComponentGeneratorPage from './components/ComponentGeneratorPage';
 import ProjectGeneratorPage from './components/ProjectGeneratorPage';
 import EDSBlockGeneratorPage from './components/EDSBlockGeneratorPage'
+import EDSBlockBuilder from './components/EDSBlockBuilder';
 import DXPComponentGeneratorPage from './components/DXPComponentGeneratorPage';
 import Navbar from './components/Navbar';
 import ConfigPanel from './components/ConfigPanel';
@@ -21,7 +22,8 @@ function App() {
           <Routes>
             <Route path="/project" element={<ProjectGeneratorPage />} />
             <Route path="/eds-block-generator" element={<EDSBlockGeneratorPage />} />
-            <Route intial path="/" element={<DXPComponentGeneratorPage />}/>
+            <Route path="/eds-block-builder" element={<EDSBlockBuilder />} />
+            <Route intial path="/" element={<DXPComponentGeneratorPage />} />
           </Routes>
         </div>
       </div>

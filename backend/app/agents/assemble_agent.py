@@ -45,6 +45,7 @@ def assemble_json(output):
         zip_base64 = base64.b64encode(zip_bytes).decode('utf-8')
 
         return {
+            "name": block_name,
             "zip_base64": zip_base64,
             "css": css_code,
             "js": js_code,
